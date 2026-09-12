@@ -1,4 +1,5 @@
 // +kubebuilder:object:generate=true
+// +groupName=bedrock.cloudyfolks.io
 package v1alpha1
 
 import (
