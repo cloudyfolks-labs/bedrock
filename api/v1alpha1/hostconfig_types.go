@@ -1,0 +1,54 @@
+package v1alpha1
+
+import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+type UnitSpec struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Enabled bool   `json:"enabled"`
+}
+
+type MirrorSpec struct {
+	Registry string `json:"registry"`
+	Endpoint string `json:"endpoint"`
+}
+
+type HostConfigSpec struct {
+	// +optional
+	Packages []string `json:"packages,omitempty"`
+	// +optional
+	Modules []string `json:"modules,omitempty"`
+	// +optional
+	Sysctls map[string]string `json:"sysctls,omitempty"`
+	// +optional
+	KernelCmdline []string `json:"kernelCmdline,omitempty"`
+	// +optional
+	Units []UnitSpec `json:"units,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +optional
+	NMState *apiextensionsv1.JSON `json:"nmstate,omitempty"`
+	// +optional
+	ContainerdMirrors []MirrorSpec `json:"containerdMirrors,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster
+type HostConfig struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              HostConfigSpec `json:"spec"`
+}
+
+// +kubebuilder:object:root=true
+type HostConfigList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []HostConfig `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&HostConfig{}, &HostConfigList{})
+}
