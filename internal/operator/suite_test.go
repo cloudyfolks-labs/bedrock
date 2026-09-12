@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
 )
@@ -48,4 +49,8 @@ func newTestScheme(t *testing.T) *runtime.Scheme {
 		t.Fatal(err)
 	}
 	return scheme
+}
+
+func metricsDisabled() metricsserver.Options {
+	return metricsserver.Options{BindAddress: "0"}
 }
