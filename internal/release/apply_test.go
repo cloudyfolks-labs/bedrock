@@ -2,12 +2,17 @@ package release
 
 import (
 	"context"
+	stderrors "errors"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -107,5 +112,72 @@ func TestReadInventoryWhenMissing(t *testing.T) {
 	}
 	if len(inv) != 0 {
 		t.Fatalf("expected empty inventory, got %d", len(inv))
+	}
+}
+
+func TestWaitGroupWithCRDAndConfigMaps(t *testing.T) {
+	c, _ := startTestEnv(t)
+	ctx := context.Background()
+	bundle, err := Load(os.DirFS("testdata/good"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: SystemNamespace}}); err != nil {
+		t.Fatal(err)
+	}
+	applier := Applier{Client: c}
+	for _, group := range bundle.Groups {
+		if err := applier.Apply(ctx, group); err != nil {
+			t.Fatal(err)
+		}
+		waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		err := WaitGroup(waitCtx, c, Gates{}, group, 200*time.Millisecond)
+		cancel()
+		if err != nil {
+			t.Fatalf("group %s: %v", group.Name, err)
+		}
+	}
+	blocked := Gates{schema.GroupKind{Group: "", Kind: "ConfigMap"}: func(*unstructured.Unstructured) Readiness { return Readiness{Message: "never"} }}
+	waitCtx, cancel := context.WithTimeout(ctx, 600*time.Millisecond)
+	defer cancel()
+	if err := WaitGroup(waitCtx, c, blocked, bundle.Groups[1], 100*time.Millisecond); err == nil {
+		t.Fatal("expected timeout error")
+	}
+
+	failing := Gates{schema.GroupKind{Group: "", Kind: "ConfigMap"}: func(*unstructured.Unstructured) Readiness { return Readiness{Failed: true, Message: "boom"} }}
+	failCtx, failCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer failCancel()
+	start := time.Now()
+	if err := WaitGroup(failCtx, c, failing, bundle.Groups[1], 100*time.Millisecond); err == nil {
+		t.Fatal("expected failure error")
+	}
+	if elapsed := time.Since(start); elapsed >= 2*time.Second {
+		t.Fatalf("expected fast failure, took %s", elapsed)
+	}
+}
+
+func TestWaitGroupNotFoundThenTimeout(t *testing.T) {
+	c, _ := startTestEnv(t)
+	ctx := context.Background()
+	if err := c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "release-test"}}); err != nil {
+		t.Fatal(err)
+	}
+	missing := &unstructured.Unstructured{}
+	missing.SetAPIVersion("v1")
+	missing.SetKind("ConfigMap")
+	missing.SetNamespace("release-test")
+	missing.SetName("missing")
+	group := Group{Name: "missing", Objects: []*unstructured.Unstructured{missing}}
+	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	err := WaitGroup(waitCtx, c, Gates{}, group, 400*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !stderrors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "not found yet") {
+		t.Fatalf("expected not found yet message, got %v", err)
 	}
 }

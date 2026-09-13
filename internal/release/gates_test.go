@@ -1,0 +1,106 @@
+package release
+
+import (
+	"testing"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
+
+func obj(apiVersion, kind string, spec, status map[string]any, generation int64) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": apiVersion,
+		"kind":       kind,
+		"metadata":   map[string]any{"name": "x", "generation": generation},
+		"spec":       spec,
+		"status":     status,
+	}}
+	return u
+}
+
+func TestDefaultGateDeployment(t *testing.T) {
+	ready := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(3), "availableReplicas": int64(2), "updatedReplicas": int64(2)}, 3)
+	if r := DefaultGate(ready); !r.Ready {
+		t.Fatalf("expected ready, got %q", r.Message)
+	}
+	stale := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(2), "availableReplicas": int64(2), "updatedReplicas": int64(2)}, 3)
+	if r := DefaultGate(stale); r.Ready {
+		t.Fatal("stale observedGeneration must not be ready")
+	}
+	rolling := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(3), "availableReplicas": int64(2), "updatedReplicas": int64(1)}, 3)
+	if r := DefaultGate(rolling); r.Ready {
+		t.Fatal("rolling update must not be ready")
+	}
+	defaulted := obj("apps/v1", "Deployment", map[string]any{}, map[string]any{"observedGeneration": int64(1), "availableReplicas": int64(1), "updatedReplicas": int64(1)}, 1)
+	if r := DefaultGate(defaulted); !r.Ready {
+		t.Fatalf("replicas defaults to 1: %q", r.Message)
+	}
+}
+
+func TestDefaultGateDaemonSetAndStatefulSet(t *testing.T) {
+	ds := obj("apps/v1", "DaemonSet", map[string]any{}, map[string]any{"observedGeneration": int64(1), "desiredNumberScheduled": int64(3), "numberReady": int64(3), "updatedNumberScheduled": int64(3)}, 1)
+	if r := DefaultGate(ds); !r.Ready {
+		t.Fatalf("daemonset: %q", r.Message)
+	}
+	ds.Object["status"].(map[string]any)["numberReady"] = int64(2)
+	if r := DefaultGate(ds); r.Ready {
+		t.Fatal("daemonset with 2/3 ready must not be ready")
+	}
+	sts := obj("apps/v1", "StatefulSet", map[string]any{"replicas": int64(3)}, map[string]any{"observedGeneration": int64(1), "readyReplicas": int64(3), "updatedReplicas": int64(3)}, 1)
+	if r := DefaultGate(sts); !r.Ready {
+		t.Fatalf("statefulset: %q", r.Message)
+	}
+}
+
+func TestDefaultGateConditions(t *testing.T) {
+	crd := obj("apiextensions.k8s.io/v1", "CustomResourceDefinition", map[string]any{}, map[string]any{"conditions": []any{map[string]any{"type": "Established", "status": "True"}}}, 1)
+	if r := DefaultGate(crd); !r.Ready {
+		t.Fatalf("crd: %q", r.Message)
+	}
+	crd.Object["status"].(map[string]any)["conditions"] = []any{map[string]any{"type": "Established", "status": "False"}}
+	if r := DefaultGate(crd); r.Ready {
+		t.Fatal("unestablished crd must not be ready")
+	}
+	job := obj("batch/v1", "Job", map[string]any{}, map[string]any{"conditions": []any{map[string]any{"type": "Complete", "status": "True"}}}, 1)
+	if r := DefaultGate(job); !r.Ready {
+		t.Fatalf("job: %q", r.Message)
+	}
+	cm := obj("v1", "ConfigMap", nil, nil, 0)
+	if r := DefaultGate(cm); !r.Ready {
+		t.Fatal("configmap is always ready")
+	}
+}
+
+func TestDefaultGateMissingObservedGeneration(t *testing.T) {
+	ds := obj("apps/v1", "DaemonSet", map[string]any{}, map[string]any{}, 1)
+	if r := DefaultGate(ds); r.Ready {
+		t.Fatal("daemonset without observedGeneration must not be ready")
+	}
+	scaledDown := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(0)}, map[string]any{}, 1)
+	if r := DefaultGate(scaledDown); r.Ready {
+		t.Fatal("deployment without observedGeneration must not be ready")
+	}
+	scaledDownReady := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(0)}, map[string]any{"observedGeneration": int64(1), "availableReplicas": int64(0), "updatedReplicas": int64(0)}, 1)
+	if r := DefaultGate(scaledDownReady); !r.Ready {
+		t.Fatalf("deployment scaled to zero must be ready: %q", r.Message)
+	}
+}
+
+func TestDefaultGateJobFailed(t *testing.T) {
+	job := obj("batch/v1", "Job", map[string]any{}, map[string]any{"conditions": []any{map[string]any{"type": "Failed", "status": "True"}}}, 1)
+	r := DefaultGate(job)
+	if r.Ready || !r.Failed {
+		t.Fatalf("failed job must report Failed: %+v", r)
+	}
+}
+
+func TestCheckUsesOverride(t *testing.T) {
+	gates := Gates{schema.GroupKind{Group: "", Kind: "ConfigMap"}: func(*unstructured.Unstructured) Readiness { return Readiness{Ready: false, Message: "override"} }}
+	cm := obj("v1", "ConfigMap", nil, nil, 0)
+	if r := Check(gates, cm); r.Ready || r.Message != "override" {
+		t.Fatalf("override not applied: %+v", r)
+	}
+	if r := Check(Gates{}, cm); !r.Ready {
+		t.Fatal("default must apply without override")
+	}
+}
