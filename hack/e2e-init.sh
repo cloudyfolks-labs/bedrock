@@ -4,6 +4,7 @@ set -euo pipefail
 version=${VERSION:-dev}
 image=${IMAGE:-ghcr.io/cloudyfolks-labs/bedrock:$version}
 workdir=$(mktemp -d)
+device=""
 export KUBECONFIG=/var/lib/k0s/pki/admin.conf
 
 dump() {
@@ -25,6 +26,7 @@ dump() {
     done
     journalctl -u k0scontroller --no-pager -n 200 || true
   fi
+  if [ -n "$device" ]; then losetup -d "$device" || true; fi
   rm -rf "$workdir"
 }
 trap dump EXIT
