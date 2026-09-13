@@ -5,11 +5,14 @@ ENVTEST ?= $(shell $(GO) env GOPATH)/bin/setup-envtest
 ENVTEST_VERSION ?= release-0.24
 ENVTEST_K8S_VERSION ?= 1.36.x
 BIN ?= bin/bedrock
+VERSION ?= dev
+IMAGE ?= ghcr.io/cloudyfolks-labs/bedrock:$(VERSION)
+HELM ?= helm
 
-.PHONY: build test lint generate crds envtest-assets e2e-kind controller-gen
+.PHONY: build test lint generate crds envtest-assets e2e-kind controller-gen release
 
 build:
-	CGO_ENABLED=0 $(GO) build -trimpath -o $(BIN) ./cmd/bedrock
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X github.com/cloudyfolks-labs/bedrock/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/bedrock
 
 test: envtest-assets
 	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GO) test ./... -count=1
@@ -33,3 +36,7 @@ envtest-assets:
 
 e2e-kind: build crds
 	hack/e2e-kind.sh
+
+release: build
+	@command -v $(HELM) >/dev/null || { echo "helm is required"; exit 1; }
+	$(BIN) release build --config release/components.yaml --version $(VERSION) --image $(IMAGE) --out dist/release --helm $(HELM)

@@ -1,0 +1,35 @@
+k0sVersion: v1.36.3+k0s.0
+supportedOS:
+  - ubuntu-24.04
+  - ubuntu-22.04
+  - debian-13
+  - debian-12
+  - fedora-43
+  - fedora-42
+  - rhel-10
+  - rhel-9
+  - centos-stream-10
+  - centos-stream-9
+  - sles-16
+  - sles-15
+upgradeFrom: []
+components:
+  - name: crds
+    order: 0
+    dirs: [manifests/00-crds]
+  - name: cert-manager
+    order: 60
+    chart: charts/cert-manager
+    version: v1.20.2
+    namespace: cert-manager
+    values: release/values/cert-manager.yaml
+    crdsToGroup: crds
+  - name: monitoring
+    order: 70
+    chart: charts/metrics-server
+    version: 3.13.1
+    namespace: kube-system
+    values: release/values/metrics-server.yaml
+  - name: bedrock
+    order: 90
+    dirs: [manifests/90-bedrock]
