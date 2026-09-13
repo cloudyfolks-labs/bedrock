@@ -30,6 +30,8 @@ func Labels(names []string) map[string]string {
 	}
 	if slices.Contains(names, v1alpha1.RoleFabricGateway) {
 		labels[FabricGWLabel] = "true"
+	}
+	if slices.Contains(names, v1alpha1.RoleControlPlane) {
 		labels[FabricRoleLabel] = "master"
 	}
 	return labels

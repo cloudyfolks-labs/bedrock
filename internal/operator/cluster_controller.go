@@ -15,6 +15,7 @@ import (
 
 	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
 	"github.com/cloudyfolks-labs/bedrock/internal/release"
+	"github.com/cloudyfolks-labs/bedrock/internal/roles"
 )
 
 type ClusterReconciler struct {
@@ -63,7 +64,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	if vars[release.VarMasterIPs] == "" {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, r.writeStatus(ctx, func(s *v1alpha1.ClusterStatus) {
-			setCondition(s, v1alpha1.ConditionProgressing, metav1.ConditionTrue, "WaitingForMasterNodes", "no node carries fabric/role=master yet", cluster.Generation)
+			setCondition(s, v1alpha1.ConditionProgressing, metav1.ConditionTrue, "WaitingForMasterNodes", fmt.Sprintf("no node carries %s=master yet", roles.FabricRoleLabel), cluster.Generation)
 		})
 	}
 	return ctrl.Result{}, r.install(ctx, cluster.Generation, vars)

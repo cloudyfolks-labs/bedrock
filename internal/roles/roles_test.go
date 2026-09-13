@@ -30,3 +30,23 @@ func TestTaintsWithoutWorkload(t *testing.T) {
 		t.Fatal("taint rule broken")
 	}
 }
+
+func TestLabelsFabricRoleFollowsControlPlane(t *testing.T) {
+	labels := Labels([]string{v1alpha1.RoleControlPlane})
+	if labels[FabricRoleLabel] != "master" {
+		t.Fatalf("control-plane must carry %s=master: %v", FabricRoleLabel, labels)
+	}
+	if _, ok := labels[FabricGWLabel]; ok {
+		t.Fatalf("control-plane alone must not carry %s: %v", FabricGWLabel, labels)
+	}
+}
+
+func TestLabelsFabricGatewayWithoutControlPlane(t *testing.T) {
+	labels := Labels([]string{v1alpha1.RoleFabricGateway})
+	if labels[FabricGWLabel] != "true" {
+		t.Fatalf("fabric-gateway must carry %s=true: %v", FabricGWLabel, labels)
+	}
+	if _, ok := labels[FabricRoleLabel]; ok {
+		t.Fatalf("fabric-gateway alone must not carry %s: %v", FabricRoleLabel, labels)
+	}
+}

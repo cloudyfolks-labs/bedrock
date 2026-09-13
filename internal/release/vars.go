@@ -9,6 +9,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/cloudyfolks-labs/bedrock/internal/roles"
 )
 
 const (
@@ -18,7 +20,7 @@ const (
 
 func Vars(ctx context.Context, c client.Client, vip string) (map[string]string, error) {
 	var nodes corev1.NodeList
-	if err := c.List(ctx, &nodes, client.MatchingLabels{"fabric/role": "master"}); err != nil {
+	if err := c.List(ctx, &nodes, client.MatchingLabels{roles.FabricRoleLabel: "master"}); err != nil {
 		return nil, err
 	}
 	var ips []string
