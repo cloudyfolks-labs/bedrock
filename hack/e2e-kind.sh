@@ -4,7 +4,15 @@ set -euo pipefail
 cluster=bedrock-e2e
 image=ghcr.io/cloudyfolks-labs/bedrock:dev
 
-trap 'kind delete cluster --name "$cluster" >/dev/null 2>&1 || true' EXIT
+cleanup() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    kubectl -n bedrock-system logs deploy/bedrock-operator --tail=200 || true
+    kubectl get setting,host -o yaml || true
+  fi
+  kind delete cluster --name "$cluster" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 kind delete cluster --name "$cluster" >/dev/null 2>&1 || true
 kind create cluster --name "$cluster" --wait 120s
