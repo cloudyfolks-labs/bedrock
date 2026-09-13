@@ -24,15 +24,24 @@ type ReleaseSpec struct {
 	SupportedOS []string `json:"supportedOS,omitempty"`
 }
 
+type ReleaseStatus struct {
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
+// +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
 // +kubebuilder:printcolumn:name="K0s",type=string,JSONPath=`.spec.k0sVersion`
 // +kubebuilder:validation:XValidation:rule="self.spec == oldSelf.spec",message="release spec is immutable"
 type Release struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ReleaseSpec `json:"spec"`
+	Spec              ReleaseSpec   `json:"spec"`
+	Status            ReleaseStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

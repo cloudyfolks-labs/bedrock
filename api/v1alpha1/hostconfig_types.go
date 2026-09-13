@@ -34,12 +34,21 @@ type HostConfigSpec struct {
 	ContainerdMirrors []MirrorSpec `json:"containerdMirrors,omitempty"`
 }
 
+type HostConfigStatus struct {
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
+// +kubebuilder:subresource:status
 type HostConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              HostConfigSpec `json:"spec"`
+	Spec              HostConfigSpec   `json:"spec"`
+	Status            HostConfigStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
