@@ -1,0 +1,37 @@
+{{- if include "fabric.renderDataPlane" . -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fabric-cni
+  {{- with .Values.agent.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.agent.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+roleRef:
+  name: system:fabric-cni
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: fabric-cni
+    namespace: {{ .Values.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fabric-cni-secret-reader
+  namespace: {{ .Values.namespace }}
+subjects:
+- kind: ServiceAccount
+  name: fabric-cni
+  namespace: {{ .Values.namespace }}
+roleRef:
+  kind: Role
+  name: secret-reader-ovn-ipsec
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
