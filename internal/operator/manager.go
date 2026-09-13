@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -37,7 +38,13 @@ func Run(ctx context.Context, cfg *rest.Config, scheme *runtime.Scheme, opts Run
 	if err != nil {
 		return fmt.Errorf("load release from %s: %w", opts.ReleaseDir, err)
 	}
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme, LeaderElection: true, LeaderElectionID: "bedrock-operator", LeaderElectionNamespace: "bedrock-system"})
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:                  scheme,
+		LeaderElection:          true,
+		LeaderElectionID:        "bedrock-operator",
+		LeaderElectionNamespace: "bedrock-system",
+		Client:                  client.Options{Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.ConfigMap{}}}},
+	})
 	if err != nil {
 		return err
 	}

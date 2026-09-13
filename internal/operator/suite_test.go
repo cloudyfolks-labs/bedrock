@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -65,5 +66,6 @@ func testManagerOptions(t *testing.T) ctrl.Options {
 		Scheme:     newTestScheme(t),
 		Metrics:    metricsDisabled(),
 		Controller: config.Controller{SkipNameValidation: ptr.To(true)},
+		Client:     client.Options{Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.ConfigMap{}}}},
 	}
 }
