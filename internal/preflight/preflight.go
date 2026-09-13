@@ -2,6 +2,7 @@ package preflight
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -68,10 +69,16 @@ func vipFreeCheck(ctx context.Context, e host.Exec, vip string) Result {
 	if assigned {
 		return Result{Name: "vip-free", Fatal: true, OK: true}
 	}
-	if _, err := e.Run(ctx, "ping", "-c", "1", "-W", "1", vip); err == nil {
+	_, err = e.Run(ctx, "ping", "-c", "1", "-W", "1", vip)
+	var exit *host.ExitError
+	switch {
+	case err == nil:
 		return Result{Name: "vip-free", Fatal: true, Message: fmt.Sprintf("vip %s already answers to ping, choose a free address", vip)}
+	case errors.As(err, &exit):
+		return Result{Name: "vip-free", Fatal: true, OK: true}
+	default:
+		return Result{Name: "vip-free", Fatal: true, Message: fmt.Sprintf("cannot probe vip %s: %v", vip, err)}
 	}
-	return Result{Name: "vip-free", Fatal: true, OK: true}
 }
 
 func deviceCheck(device host.Device) Result {

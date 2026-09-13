@@ -2,6 +2,7 @@ package preflight
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -115,4 +116,18 @@ func TestRunVIPFreeSkippedWhenAlreadyAssignedToThisHost(t *testing.T) {
 	if Blocked(results) {
 		t.Fatalf("must not block when the vip is already on this host: %s", Format(results))
 	}
+}
+
+func TestRunVIPFreeFailsWhenPingCannotRun(t *testing.T) {
+	e := &host.FakeExec{
+		Responses: map[string]string{"ip -json addr": "[]"},
+		Errors:    map[string]error{"ping -c 1 -W 1 10.0.10.10": errors.New("exec: ping: not found")},
+	}
+	results := Run(context.Background(), e, goodFacts(), []host.Device{{Path: "/dev/sdb", Block: true}}, goodConfig(), []string{"ubuntu-24.04"})
+	for _, r := range results {
+		if r.Name == "vip-free" && !r.OK && strings.Contains(r.Message, "cannot probe") {
+			return
+		}
+	}
+	t.Fatalf("expected vip-free to fail when ping cannot run: %s", Format(results))
 }
