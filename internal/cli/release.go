@@ -74,6 +74,10 @@ func releaseApply(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "release apply: --dir is required")
 		return 2
 	}
+	if *interval <= 0 {
+		fmt.Fprintln(stderr, "release apply: --interval must be positive")
+		return 2
+	}
 	bundle, err := release.Load(os.DirFS(*dir))
 	if err != nil {
 		fmt.Fprintln(stderr, err)

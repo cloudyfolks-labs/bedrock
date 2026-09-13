@@ -1,6 +1,7 @@
 package release
 
 import (
+	"context"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -19,21 +20,28 @@ func obj(apiVersion, kind string, spec, status map[string]any, generation int64)
 }
 
 func TestDefaultGateDeployment(t *testing.T) {
-	ready := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(3), "availableReplicas": int64(2), "updatedReplicas": int64(2)}, 3)
+	ready := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(3), "replicas": int64(2), "availableReplicas": int64(2), "updatedReplicas": int64(2)}, 3)
 	if r := DefaultGate(ready); !r.Ready {
 		t.Fatalf("expected ready, got %q", r.Message)
 	}
-	stale := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(2), "availableReplicas": int64(2), "updatedReplicas": int64(2)}, 3)
+	stale := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(2), "replicas": int64(2), "availableReplicas": int64(2), "updatedReplicas": int64(2)}, 3)
 	if r := DefaultGate(stale); r.Ready {
 		t.Fatal("stale observedGeneration must not be ready")
 	}
-	rolling := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(3), "availableReplicas": int64(2), "updatedReplicas": int64(1)}, 3)
+	rolling := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(2)}, map[string]any{"observedGeneration": int64(3), "replicas": int64(2), "availableReplicas": int64(2), "updatedReplicas": int64(1)}, 3)
 	if r := DefaultGate(rolling); r.Ready {
 		t.Fatal("rolling update must not be ready")
 	}
-	defaulted := obj("apps/v1", "Deployment", map[string]any{}, map[string]any{"observedGeneration": int64(1), "availableReplicas": int64(1), "updatedReplicas": int64(1)}, 1)
+	defaulted := obj("apps/v1", "Deployment", map[string]any{}, map[string]any{"observedGeneration": int64(1), "replicas": int64(1), "availableReplicas": int64(1), "updatedReplicas": int64(1)}, 1)
 	if r := DefaultGate(defaulted); !r.Ready {
 		t.Fatalf("replicas defaults to 1: %q", r.Message)
+	}
+}
+
+func TestDefaultGateDeploymentStatusReplicasMismatch(t *testing.T) {
+	stuck := obj("apps/v1", "Deployment", map[string]any{"replicas": int64(3)}, map[string]any{"observedGeneration": int64(1), "replicas": int64(2), "availableReplicas": int64(2), "updatedReplicas": int64(2)}, 1)
+	if r := DefaultGate(stuck); r.Ready {
+		t.Fatal("status.replicas behind spec.replicas must not be ready")
 	}
 }
 
@@ -91,6 +99,13 @@ func TestDefaultGateJobFailed(t *testing.T) {
 	r := DefaultGate(job)
 	if r.Ready || !r.Failed {
 		t.Fatalf("failed job must report Failed: %+v", r)
+	}
+}
+
+func TestWaitGroupRejectsNonPositiveInterval(t *testing.T) {
+	err := WaitGroup(context.Background(), nil, Gates{}, Group{}, 0)
+	if err == nil || err.Error() != "interval must be positive" {
+		t.Fatalf("expected interval error, got %v", err)
 	}
 }
 

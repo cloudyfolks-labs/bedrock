@@ -32,7 +32,7 @@ func Check(gates Gates, obj *unstructured.Unstructured) Readiness {
 func DefaultGate(obj *unstructured.Unstructured) Readiness {
 	switch obj.GroupVersionKind().GroupKind() {
 	case schema.GroupKind{Group: "apps", Kind: "Deployment"}:
-		return generationCurrent(obj, replicasReady(obj, "availableReplicas", "updatedReplicas", specReplicas(obj)))
+		return generationCurrent(obj, deploymentReady(obj, specReplicas(obj)))
 	case schema.GroupKind{Group: "apps", Kind: "StatefulSet"}:
 		return generationCurrent(obj, replicasReady(obj, "readyReplicas", "updatedReplicas", specReplicas(obj)))
 	case schema.GroupKind{Group: "apps", Kind: "DaemonSet"}:
@@ -52,6 +52,14 @@ func specReplicas(obj *unstructured.Unstructured) int64 {
 		return 1
 	}
 	return replicas
+}
+
+func deploymentReady(obj *unstructured.Unstructured, want int64) Readiness {
+	replicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "replicas")
+	if replicas != want {
+		return Readiness{Message: fmt.Sprintf("%s %d/%d replicas", obj.GetName(), replicas, want)}
+	}
+	return replicasReady(obj, "availableReplicas", "updatedReplicas", want)
 }
 
 func replicasReady(obj *unstructured.Unstructured, readyField, updatedField string, want int64) Readiness {
@@ -95,7 +103,27 @@ func conditionTrue(obj *unstructured.Unstructured, conditionType string) Readine
 	return Readiness{Message: fmt.Sprintf("%s condition %s not true", obj.GetName(), conditionType)}
 }
 
+var defaultGatedKinds = map[schema.GroupKind]struct{}{
+	{Group: "apps", Kind: "Deployment"}:                               {},
+	{Group: "apps", Kind: "StatefulSet"}:                              {},
+	{Group: "apps", Kind: "DaemonSet"}:                                {},
+	{Group: "batch", Kind: "Job"}:                                     {},
+	{Group: "apiextensions.k8s.io", Kind: "CustomResourceDefinition"}: {},
+}
+
+func gated(gates Gates, obj *unstructured.Unstructured) bool {
+	gk := obj.GroupVersionKind().GroupKind()
+	if _, ok := gates[gk]; ok {
+		return true
+	}
+	_, ok := defaultGatedKinds[gk]
+	return ok
+}
+
 func WaitGroup(ctx context.Context, c client.Client, gates Gates, group Group, interval time.Duration) error {
+	if interval <= 0 {
+		return fmt.Errorf("interval must be positive")
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -117,6 +145,9 @@ func WaitGroup(ctx context.Context, c client.Client, gates Gates, group Group, i
 func notReady(ctx context.Context, c client.Client, gates Gates, group Group) ([]string, error) {
 	var pending []string
 	for _, obj := range group.Objects {
+		if !gated(gates, obj) {
+			continue
+		}
 		live := &unstructured.Unstructured{}
 		live.SetGroupVersionKind(obj.GroupVersionKind())
 		if err := c.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {

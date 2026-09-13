@@ -32,3 +32,14 @@ func TestReleaseApplyRequiresDir(t *testing.T) {
 		t.Fatalf("stderr %q", errOut.String())
 	}
 }
+
+func TestReleaseApplyRejectsNonPositiveInterval(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := Run([]string{"release", "apply", "--dir", ".", "--interval", "0s"}, &out, &errOut)
+	if code != 2 {
+		t.Fatalf("exit %d, want 2", code)
+	}
+	if !bytes.Contains(errOut.Bytes(), []byte("--interval")) {
+		t.Fatalf("stderr %q", errOut.String())
+	}
+}

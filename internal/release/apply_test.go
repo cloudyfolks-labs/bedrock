@@ -205,8 +205,8 @@ func TestWaitGroupNotFoundThenTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	missing := &unstructured.Unstructured{}
-	missing.SetAPIVersion("v1")
-	missing.SetKind("ConfigMap")
+	missing.SetAPIVersion("apps/v1")
+	missing.SetKind("Deployment")
 	missing.SetNamespace("release-test")
 	missing.SetName("missing")
 	group := Group{Name: "missing", Objects: []*unstructured.Unstructured{missing}}
