@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: release-test
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alpha
+  namespace: release-test
+data:
+  key: one
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: beta
+  namespace: release-test
+data:
+  key: two
