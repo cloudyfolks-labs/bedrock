@@ -12,7 +12,8 @@ var Version = "dev"
 
 func Commands() map[string]Command {
 	return map[string]Command{
-		"version": versionCommand,
+		"version":  versionCommand,
+		"operator": operatorCommand,
 	}
 }
 
