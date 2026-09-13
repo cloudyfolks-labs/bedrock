@@ -109,6 +109,9 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	if err != nil {
 		return fail(stderr, err)
 	}
+	if cfg.Spec.Version != bundle.Spec.Version {
+		return fail(stderr, fmt.Errorf("config version %s does not match release %s", cfg.Spec.Version, bundle.Spec.Version))
+	}
 
 	step(stdout, "preflight")
 	facts, err := host.Gather(ctx, deps.Exec, deps.Root, deps.FreeBytes, deps.Uid)

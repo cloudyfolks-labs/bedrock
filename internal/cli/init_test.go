@@ -233,6 +233,24 @@ func TestRunInitSkipsInstallWhenAlreadyRunning(t *testing.T) {
 	}
 }
 
+func TestRunInitRejectsConfigVersionMismatch(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "cluster.yaml")
+	mismatched := strings.Replace(initConfig, "version: v0.1.0-test", "version: v9.9.9", 1)
+	if err := os.WriteFile(configPath, []byte(mismatched), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	code := RunInit(context.Background(), []string{"-f", configPath, "--release-dir", filepath.Join("..", "release", "testdata", "good")}, InitDeps{}, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out.String(), errOut.String())
+	}
+	want := "config version v9.9.9 does not match release v0.1.0-test"
+	if !strings.Contains(errOut.String(), want) {
+		t.Fatalf("stderr %q, want to contain %q", errOut.String(), want)
+	}
+}
+
 func TestRunInitBlockedByPreflight(t *testing.T) {
 	_, newClient := startEnv(t)
 	root, e := fakeHost(t)
