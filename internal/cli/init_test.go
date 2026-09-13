@@ -85,10 +85,14 @@ func fakeHost(t *testing.T) (string, *host.FakeExec) {
 		"ip addr replace 10.0.10.10/32 dev bond0.10":   "",
 		"systemctl daemon-reload":                      "",
 		"systemctl enable bedrock-vip.service":         "",
+		"ip -json addr":                                `[{"addr_info":[{"family":"inet","local":"10.0.10.11"}]}]`,
 		"/usr/local/bin/k0s version":                   "v1.36.3+k0s.0\n",
 		"/usr/local/bin/k0s start":                     "",
 		"/usr/local/bin/k0s kubectl get --raw=/readyz": "ok",
-	}, Errors: map[string]error{"blkid -p -o value -s TYPE /dev/sdb": &host.ExitError{Code: 2}}}
+	}, Errors: map[string]error{
+		"blkid -p -o value -s TYPE /dev/sdb": &host.ExitError{Code: 2},
+		"ping -c 1 -W 1 10.0.10.10":          &host.ExitError{Code: 1},
+	}}
 	return root, e
 }
 

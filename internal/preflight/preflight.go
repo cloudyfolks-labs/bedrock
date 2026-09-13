@@ -1,6 +1,7 @@
 package preflight
 
 import (
+	"context"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -19,7 +20,7 @@ type Result struct {
 	Message string
 }
 
-func Run(facts host.Facts, devices []host.Device, cfg v1alpha1.ClusterConfig, supportedOS []string) []Result {
+func Run(ctx context.Context, e host.Exec, facts host.Facts, devices []host.Device, cfg v1alpha1.ClusterConfig, supportedOS []string) []Result {
 	osKey := host.OSKey(facts.OSID, facts.OSVersionID)
 	results := []Result{
 		check("root", true, facts.Root, "run as root"),
@@ -32,6 +33,8 @@ func Run(facts host.Facts, devices []host.Device, cfg v1alpha1.ClusterConfig, su
 		check("disk", false, facts.FreeVarLibBytes >= minFreeBytes, fmt.Sprintf("%d GiB free on /var/lib, at least 20 GiB recommended", facts.FreeVarLibBytes>>30)),
 		check("management-interface", true, slices.Contains(facts.Interfaces, cfg.Spec.Network.ManagementInterface), fmt.Sprintf("interface %s not found", cfg.Spec.Network.ManagementInterface)),
 		vipCheck(cfg.Spec.API.VIP, facts.DefaultIP),
+		vipFreeCheck(ctx, e, cfg.Spec.API.VIP),
+		check("iommu", false, facts.IOMMUGroups > 0, "no IOMMU groups found, hardware passthrough will not work"),
 	}
 	for _, device := range devices {
 		results = append(results, deviceCheck(device))
@@ -55,6 +58,20 @@ func vipCheck(vip, nodeIP string) Result {
 		return Result{Name: "vip", Fatal: true, Message: "vip must differ from the node address"}
 	}
 	return Result{Name: "vip", Fatal: true, OK: true}
+}
+
+func vipFreeCheck(ctx context.Context, e host.Exec, vip string) Result {
+	assigned, err := host.HasAddress(ctx, e, vip)
+	if err != nil {
+		return Result{Name: "vip-free", Fatal: true, Message: err.Error()}
+	}
+	if assigned {
+		return Result{Name: "vip-free", Fatal: true, OK: true}
+	}
+	if _, err := e.Run(ctx, "ping", "-c", "1", "-W", "1", vip); err == nil {
+		return Result{Name: "vip-free", Fatal: true, Message: fmt.Sprintf("vip %s already answers to ping, choose a free address", vip)}
+	}
+	return Result{Name: "vip-free", Fatal: true, OK: true}
 }
 
 func deviceCheck(device host.Device) Result {

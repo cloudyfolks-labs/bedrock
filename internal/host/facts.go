@@ -25,6 +25,7 @@ type Facts struct {
 	DefaultIP        string
 	Interfaces       []string
 	FreeVarLibBytes  uint64
+	IOMMUGroups      int
 }
 
 type route struct {
@@ -87,7 +88,16 @@ func Gather(ctx context.Context, e Exec, root string, freeBytes func(string) (ui
 		DefaultIP:        ip,
 		Interfaces:       links,
 		FreeVarLibBytes:  free,
+		IOMMUGroups:      countEntries(filepath.Join(root, "sys", "kernel", "iommu_groups")),
 	}, nil
+}
+
+func countEntries(path string) int {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return 0
+	}
+	return len(entries)
 }
 
 func exists(path string) bool {
@@ -145,6 +155,25 @@ func primaryAddress(ctx context.Context, e Exec, iface string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no IPv4 address on %s", iface)
+}
+
+func HasAddress(ctx context.Context, e Exec, ip string) (bool, error) {
+	out, err := e.Run(ctx, "ip", "-json", "addr")
+	if err != nil {
+		return false, err
+	}
+	var entries []addrEntry
+	if err := json.Unmarshal([]byte(out), &entries); err != nil {
+		return false, fmt.Errorf("parse addresses: %w", err)
+	}
+	for _, entry := range entries {
+		for _, info := range entry.AddrInfo {
+			if info.Local == ip {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func interfaces(ctx context.Context, e Exec) ([]string, error) {

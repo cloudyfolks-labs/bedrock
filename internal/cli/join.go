@@ -73,7 +73,7 @@ func RunJoin(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	var cfg v1alpha1.ClusterConfig
 	cfg.Spec.API.VIP = token.VIP
 	cfg.Spec.Network.ManagementInterface = facts.DefaultInterface
-	results := preflight.Run(facts, nil, cfg, token.SupportedOS)
+	results := preflight.Run(ctx, deps.Exec, facts, nil, cfg, token.SupportedOS)
 	fmt.Fprint(stdout, preflight.Format(results))
 	if preflight.Blocked(results) {
 		return fail(stderr, fmt.Errorf("preflight failed"))

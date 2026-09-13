@@ -66,6 +66,33 @@ func TestGatherWithoutKVMAndNotRoot(t *testing.T) {
 	}
 }
 
+func TestGatherCountsIOMMUGroups(t *testing.T) {
+	root := fakeRoot(t, true)
+	for _, group := range []string{"0", "1"} {
+		if err := os.MkdirAll(filepath.Join(root, "sys", "kernel", "iommu_groups", group), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	facts, err := Gather(context.Background(), fakeIP(), root, func(string) (uint64, error) { return 50 << 30, nil }, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if facts.IOMMUGroups != 2 {
+		t.Fatalf("iommu groups %d", facts.IOMMUGroups)
+	}
+}
+
+func TestGatherWithoutIOMMU(t *testing.T) {
+	root := fakeRoot(t, true)
+	facts, err := Gather(context.Background(), fakeIP(), root, func(string) (uint64, error) { return 50 << 30, nil }, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if facts.IOMMUGroups != 0 {
+		t.Fatalf("iommu groups %d", facts.IOMMUGroups)
+	}
+}
+
 func TestOSKey(t *testing.T) {
 	cases := map[[2]string]string{
 		{"ubuntu", "24.04"}: "ubuntu-24.04",

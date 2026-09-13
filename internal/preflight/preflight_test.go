@@ -1,6 +1,7 @@
 package preflight
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 )
 
 func goodFacts() host.Facts {
-	return host.Facts{OSID: "ubuntu", OSVersionID: "24.04", Arch: "amd64", Root: true, Systemd: true, CgroupV2: true, KVM: true, NTPSynced: true, DefaultInterface: "bond0", DefaultIP: "10.0.10.11", Interfaces: []string{"lo", "bond0"}, FreeVarLibBytes: 100 << 30}
+	return host.Facts{OSID: "ubuntu", OSVersionID: "24.04", Arch: "amd64", Root: true, Systemd: true, CgroupV2: true, KVM: true, NTPSynced: true, DefaultInterface: "bond0", DefaultIP: "10.0.10.11", Interfaces: []string{"lo", "bond0"}, FreeVarLibBytes: 100 << 30, IOMMUGroups: 1}
 }
 
 func goodConfig() v1alpha1.ClusterConfig {
@@ -20,8 +21,15 @@ func goodConfig() v1alpha1.ClusterConfig {
 	return cfg
 }
 
+func goodExec() *host.FakeExec {
+	return &host.FakeExec{
+		Responses: map[string]string{"ip -json addr": `[{"addr_info":[{"family":"inet","local":"10.0.10.11"}]}]`},
+		Errors:    map[string]error{"ping -c 1 -W 1 10.0.10.10": &host.ExitError{Code: 1}},
+	}
+}
+
 func TestRunAllGood(t *testing.T) {
-	results := Run(goodFacts(), []host.Device{{Path: "/dev/sdb", Block: true}}, goodConfig(), []string{"ubuntu-24.04"})
+	results := Run(context.Background(), goodExec(), goodFacts(), []host.Device{{Path: "/dev/sdb", Block: true}}, goodConfig(), []string{"ubuntu-24.04"})
 	if Blocked(results) {
 		t.Fatalf("unexpected block: %s", Format(results))
 	}
@@ -39,7 +47,8 @@ func TestRunFatalFailures(t *testing.T) {
 	facts.Interfaces = []string{"lo"}
 	cfg := goodConfig()
 	cfg.Spec.API.VIP = "10.0.10.11"
-	results := Run(facts, []host.Device{{Path: "/dev/sdb", Block: true, Signature: "ext4"}}, cfg, []string{"ubuntu-24.04"})
+	e := &host.FakeExec{Responses: map[string]string{"ip -json addr": `[{"addr_info":[{"family":"inet","local":"10.0.10.11"}]}]`}}
+	results := Run(context.Background(), e, facts, []host.Device{{Path: "/dev/sdb", Block: true, Signature: "ext4"}}, cfg, []string{"ubuntu-24.04"})
 	if !Blocked(results) {
 		t.Fatal("expected block")
 	}
@@ -61,19 +70,49 @@ func TestRunWarningsDoNotBlock(t *testing.T) {
 	facts.KVM = false
 	facts.NTPSynced = false
 	facts.FreeVarLibBytes = 1 << 30
-	results := Run(facts, []host.Device{{Path: "/dev/sdb", Block: true}}, goodConfig(), []string{"ubuntu-24.04"})
+	facts.IOMMUGroups = 0
+	results := Run(context.Background(), goodExec(), facts, []host.Device{{Path: "/dev/sdb", Block: true}}, goodConfig(), []string{"ubuntu-24.04"})
 	if Blocked(results) {
 		t.Fatalf("warnings must not block: %s", Format(results))
 	}
 	out := Format(results)
-	if !strings.Contains(out, "[warn] kvm") || !strings.Contains(out, "[warn] ntp") || !strings.Contains(out, "[warn] disk") {
+	if !strings.Contains(out, "[warn] kvm") || !strings.Contains(out, "[warn] ntp") || !strings.Contains(out, "[warn] disk") || !strings.Contains(out, "[warn] iommu") {
 		t.Fatalf("format %s", out)
 	}
 }
 
 func TestRunNonBlockDevice(t *testing.T) {
-	results := Run(goodFacts(), []host.Device{{Path: "/dev/sdb", Block: false}}, goodConfig(), []string{"ubuntu-24.04"})
+	results := Run(context.Background(), goodExec(), goodFacts(), []host.Device{{Path: "/dev/sdb", Block: false}}, goodConfig(), []string{"ubuntu-24.04"})
 	if !Blocked(results) {
 		t.Fatal("non-block device must block")
+	}
+}
+
+func TestRunVIPFreeFailsWhenVIPAnswersPing(t *testing.T) {
+	e := &host.FakeExec{
+		Responses: map[string]string{
+			"ip -json addr":             "[]",
+			"ping -c 1 -W 1 10.0.10.10": "",
+		},
+	}
+	results := Run(context.Background(), e, goodFacts(), []host.Device{{Path: "/dev/sdb", Block: true}}, goodConfig(), []string{"ubuntu-24.04"})
+	if !Blocked(results) {
+		t.Fatal("expected block when the vip already answers to ping")
+	}
+	for _, r := range results {
+		if r.Name == "vip-free" && !r.OK {
+			return
+		}
+	}
+	t.Fatalf("expected vip-free to fail: %s", Format(results))
+}
+
+func TestRunVIPFreeSkippedWhenAlreadyAssignedToThisHost(t *testing.T) {
+	e := &host.FakeExec{
+		Responses: map[string]string{"ip -json addr": `[{"addr_info":[{"family":"inet","local":"10.0.10.10"}]}]`},
+	}
+	results := Run(context.Background(), e, goodFacts(), []host.Device{{Path: "/dev/sdb", Block: true}}, goodConfig(), []string{"ubuntu-24.04"})
+	if Blocked(results) {
+		t.Fatalf("must not block when the vip is already on this host: %s", Format(results))
 	}
 }
