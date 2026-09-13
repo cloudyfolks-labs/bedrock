@@ -152,14 +152,16 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	}
 
 	step(stdout, "installing k0s controller")
-	if err := k0sClient.Install(ctx, k0s.InstallOptions{
-		Role: "controller", ConfigPath: configPath, EnableWorker: hasRole(cfg.Spec.Roles, v1alpha1.RoleWorkload), NoTaints: true, DynamicConfig: true,
-		Labels: roles.Labels(cfg.Spec.Roles), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: o.dataDir, DisableComponents: k0s.DefaultDisabledComponents,
-	}); err != nil {
-		return fail(stderr, err)
-	}
-	if err := k0sClient.Start(ctx); err != nil {
-		return fail(stderr, err)
+	if !k0sClient.Running(ctx) {
+		if err := k0sClient.Install(ctx, k0s.InstallOptions{
+			Role: "controller", Force: true, ConfigPath: configPath, EnableWorker: hasRole(cfg.Spec.Roles, v1alpha1.RoleWorkload), NoTaints: true, DynamicConfig: true,
+			Labels: roles.Labels(cfg.Spec.Roles), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: o.dataDir, DisableComponents: k0s.DefaultDisabledComponents,
+		}); err != nil {
+			return fail(stderr, err)
+		}
+		if err := k0sClient.Start(ctx); err != nil {
+			return fail(stderr, err)
+		}
 	}
 	step(stdout, "waiting for the api server")
 	readyCtx, cancelReady := context.WithTimeout(ctx, 10*time.Minute)

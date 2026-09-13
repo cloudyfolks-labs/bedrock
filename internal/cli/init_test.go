@@ -124,13 +124,14 @@ func TestRunInitHappyPath(t *testing.T) {
 	dataDir := filepath.Join(root, "var", "lib", "k0s")
 	k0sConfigPath := filepath.Join(root, "etc", "k0s", "k0s.yaml")
 	installArgs := k0s.InstallArgs(k0s.InstallOptions{
-		Role: "controller", ConfigPath: k0sConfigPath, EnableWorker: true, NoTaints: true, DynamicConfig: true,
+		Role: "controller", Force: true, ConfigPath: k0sConfigPath, EnableWorker: true, NoTaints: true, DynamicConfig: true,
 		Labels:            roles.Labels([]string{"control-plane", "ceph-osd", "fabric-gateway", "workload"}),
 		KubeletExtraArgs:  []string{"--node-status-update-frequency=4s"},
 		DataDir:           dataDir,
 		DisableComponents: k0s.DefaultDisabledComponents,
 	})
 	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
+	e.Errors["/usr/local/bin/k0s status --data-dir "+dataDir] = &host.ExitError{Code: 1}
 	deps := InitDeps{
 		Exec:      e,
 		Uid:       0,
@@ -169,13 +170,66 @@ func TestRunInitHappyPath(t *testing.T) {
 			joined = call
 		}
 	}
-	for _, want := range []string{"--enable-worker", "--no-taints", "--enable-dynamic-config", "bedrock.cloudyfolks.io/role-control-plane=true", "fabric/role=master", "--disable-components konnectivity-server,metrics-server,helm"} {
+	for _, want := range []string{"--force", "--enable-worker", "--no-taints", "--enable-dynamic-config", "bedrock.cloudyfolks.io/role-control-plane=true", "fabric/role=master", "--disable-components konnectivity-server,metrics-server,helm"} {
 		if !bytes.Contains([]byte(joined), []byte(want)) {
 			t.Fatalf("install call %q lacks %q", joined, want)
 		}
 	}
 	if !bytes.Contains(out.Bytes(), []byte("cluster v0.1.0-test ready")) {
 		t.Fatalf("stdout %s", out.String())
+	}
+}
+
+func TestRunInitSkipsInstallWhenAlreadyRunning(t *testing.T) {
+	c, newClient := startEnv(t)
+	root, e := fakeHost(t)
+	configPath := filepath.Join(root, "cluster.yaml")
+	if err := os.WriteFile(configPath, []byte(initConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := client.IgnoreAlreadyExists(c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}})); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "bedrock-system"}})
+	master := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", Labels: map[string]string{"fabric/role": "master"}}}
+	if err := c.Create(ctx, master); err != nil {
+		t.Fatal(err)
+	}
+	master.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.10.11"}}
+	if err := c.Status().Update(ctx, master); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			var cluster v1alpha1.Cluster
+			if err := c.Get(ctx, client.ObjectKey{Name: v1alpha1.ClusterName}, &cluster); err == nil && cluster.Status.Version == "" {
+				cluster.Status.Version = "v0.1.0-test"
+				_ = c.Status().Update(ctx, &cluster)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+	dataDir := filepath.Join(root, "var", "lib", "k0s")
+	e.Responses["/usr/local/bin/k0s status --data-dir "+dataDir] = ""
+	deps := InitDeps{
+		Exec:      e,
+		Uid:       0,
+		FreeBytes: func(string) (uint64, error) { return 100 << 30, nil },
+		Stat:      func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
+		Root:      root,
+		NewClient: newClient,
+	}
+	var out, errOut bytes.Buffer
+	code := RunInit(ctx, []string{"-f", configPath, "--release-dir", filepath.Join("..", "release", "testdata", "good"), "--k0s-bin", "/usr/local/bin/k0s", "--data-dir", dataDir, "--timeout", "30s"}, deps, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out.String(), errOut.String())
+	}
+	for _, call := range e.Calls {
+		if strings.Contains(call, "k0s install") || call == "/usr/local/bin/k0s start" {
+			t.Fatalf("k0s must not be reinstalled or restarted when already running, got %q", call)
+		}
 	}
 }
 

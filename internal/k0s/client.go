@@ -12,6 +12,7 @@ import (
 
 type InstallOptions struct {
 	Role              string
+	Force             bool
 	ConfigPath        string
 	TokenFile         string
 	EnableWorker      bool
@@ -25,6 +26,9 @@ type InstallOptions struct {
 
 func InstallArgs(opts InstallOptions) []string {
 	args := []string{"install", opts.Role}
+	if opts.Force {
+		args = append(args, "--force")
+	}
 	if opts.ConfigPath != "" {
 		args = append(args, "--config", opts.ConfigPath)
 	}
@@ -81,6 +85,11 @@ func (c Client) Install(ctx context.Context, opts InstallOptions) error {
 func (c Client) Start(ctx context.Context) error {
 	_, err := c.Exec.Run(ctx, c.Binary, "start")
 	return err
+}
+
+func (c Client) Running(ctx context.Context) bool {
+	_, err := c.Exec.Run(ctx, c.Binary, "status", "--data-dir", c.DataDir)
+	return err == nil
 }
 
 func (c Client) Stop(ctx context.Context) error {

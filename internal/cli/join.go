@@ -110,11 +110,14 @@ func RunJoin(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		opts = k0s.InstallOptions{Role: "controller", ConfigPath: configPath, TokenFile: tokenPath, EnableWorker: hasRole(nodeRoles, v1alpha1.RoleWorkload), NoTaints: true, DynamicConfig: true, Labels: roles.Labels(nodeRoles), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: o.dataDir, DisableComponents: k0s.DefaultDisabledComponents}
 	}
 	step(stdout, "installing k0s %s", opts.Role)
-	if err := k0sClient.Install(ctx, opts); err != nil {
-		return fail(stderr, err)
-	}
-	if err := k0sClient.Start(ctx); err != nil {
-		return fail(stderr, err)
+	if !k0sClient.Running(ctx) {
+		opts.Force = true
+		if err := k0sClient.Install(ctx, opts); err != nil {
+			return fail(stderr, err)
+		}
+		if err := k0sClient.Start(ctx); err != nil {
+			return fail(stderr, err)
+		}
 	}
 	if controlPlane {
 		step(stdout, "waiting for the api server")

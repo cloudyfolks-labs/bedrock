@@ -25,6 +25,30 @@ func TestInstallArgsWorkerWithToken(t *testing.T) {
 	}
 }
 
+func TestInstallArgsForceReinstall(t *testing.T) {
+	args := InstallArgs(InstallOptions{Role: "controller", Force: true, ConfigPath: "/etc/k0s/k0s.yaml", DataDir: "/var/lib/k0s"})
+	want := "install controller --force --config /etc/k0s/k0s.yaml --data-dir /var/lib/k0s"
+	if got := strings.Join(args, " "); got != want {
+		t.Fatalf("\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestClientRunningTrue(t *testing.T) {
+	e := &host.FakeExec{Responses: map[string]string{"/usr/local/bin/k0s status --data-dir /var/lib/k0s": ""}}
+	c := Client{Exec: e, Binary: "/usr/local/bin/k0s", DataDir: "/var/lib/k0s"}
+	if !c.Running(context.Background()) {
+		t.Fatal("expected k0s to be reported as running")
+	}
+}
+
+func TestClientRunningFalse(t *testing.T) {
+	e := &host.FakeExec{Errors: map[string]error{"/usr/local/bin/k0s status --data-dir /var/lib/k0s": &host.ExitError{Code: 1}}}
+	c := Client{Exec: e, Binary: "/usr/local/bin/k0s", DataDir: "/var/lib/k0s"}
+	if c.Running(context.Background()) {
+		t.Fatal("expected k0s to be reported as not running")
+	}
+}
+
 func TestClientWaitReady(t *testing.T) {
 	e := &host.FakeExec{Responses: map[string]string{"/usr/local/bin/k0s kubectl get --raw=/readyz": "ok"}}
 	c := Client{Exec: e, Binary: "/usr/local/bin/k0s", DataDir: "/var/lib/k0s"}
