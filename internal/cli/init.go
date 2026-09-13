@@ -138,6 +138,9 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	if err := host.EnsureAddress(ctx, deps.Exec, cfg.Spec.API.VIP, cfg.Spec.Network.ManagementInterface); err != nil {
 		return fail(stderr, err)
 	}
+	if err := host.EnsureVIPUnit(ctx, deps.Exec, deps.Root, cfg.Spec.API.VIP, cfg.Spec.Network.ManagementInterface); err != nil {
+		return fail(stderr, err)
+	}
 
 	step(stdout, "writing k0s.yaml")
 	configPath := filepath.Join(deps.Root, "etc", "k0s", "k0s.yaml")

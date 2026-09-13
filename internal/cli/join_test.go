@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -107,6 +108,19 @@ func TestRunJoinControlPlaneEnablesWorkerWithoutWorkloadRole(t *testing.T) {
 	}
 	if !installed {
 		t.Fatal("expected controller install to enable the kubelet")
+	}
+	vipUnit, err := os.ReadFile(filepath.Join(root, "etc", "systemd", "system", "bedrock-vip.service"))
+	if err != nil || string(vipUnit) != host.VIPUnit("10.0.10.10", "bond0.10") {
+		t.Fatalf("vip unit %q %v", vipUnit, err)
+	}
+	vipEnabled := false
+	for _, call := range e.Calls {
+		if call == "systemctl enable bedrock-vip.service" {
+			vipEnabled = true
+		}
+	}
+	if !vipEnabled {
+		t.Fatal("expected the vip unit to be enabled")
 	}
 }
 

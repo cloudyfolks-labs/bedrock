@@ -83,6 +83,8 @@ func fakeHost(t *testing.T) (string, *host.FakeExec) {
 		"timedatectl show -p NTPSynchronized --value": "yes\n",
 		"hostname": "node-1\n",
 		"ip addr replace 10.0.10.10/32 dev bond0.10":   "",
+		"systemctl daemon-reload":                      "",
+		"systemctl enable bedrock-vip.service":         "",
 		"/usr/local/bin/k0s version":                   "v1.36.3+k0s.0\n",
 		"/usr/local/bin/k0s start":                     "",
 		"/usr/local/bin/k0s kubectl get --raw=/readyz": "ok",
@@ -147,6 +149,19 @@ func TestRunInitHappyPath(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "etc", "k0s", "k0s.yaml")); err != nil {
 		t.Fatal("k0s.yaml not written")
+	}
+	vipUnit, err := os.ReadFile(filepath.Join(root, "etc", "systemd", "system", "bedrock-vip.service"))
+	if err != nil || string(vipUnit) != host.VIPUnit("10.0.10.10", "bond0.10") {
+		t.Fatalf("vip unit %q %v", vipUnit, err)
+	}
+	vipEnabled := false
+	for _, call := range e.Calls {
+		if call == "systemctl enable bedrock-vip.service" {
+			vipEnabled = true
+		}
+	}
+	if !vipEnabled {
+		t.Fatal("expected the vip unit to be enabled")
 	}
 	var cm corev1.ConfigMap
 	if err := c.Get(ctx, client.ObjectKey{Namespace: "kube-system", Name: "kube-vip"}, &cm); err != nil || cm.Data["address"] != "10.0.10.10" || cm.Data["vip_interface"] != "bond0.10" {
