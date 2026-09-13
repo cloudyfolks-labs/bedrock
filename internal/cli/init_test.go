@@ -252,6 +252,46 @@ func TestRunInitSkipsInstallWhenAlreadyRunning(t *testing.T) {
 	}
 }
 
+func TestLoadBundleRemovesExtractedDirAfterCleanup(t *testing.T) {
+	var extracted string
+	deps := InitDeps{FromImage: func(ctx context.Context, ref, arch, dest string) error {
+		extracted = dest
+		if err := os.MkdirAll(filepath.Join(dest, "manifests", "00-empty"), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dest, "release.yaml"), []byte("version: v0.1.0-test\nk0sVersion: v1.36.3+k0s.0\n"), 0o644); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dest, "images.txt"), nil, 0o644)
+	}}
+	bundle, cleanup, err := loadBundle(context.Background(), initOptions{image: "ref"}, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Spec.Version != "v0.1.0-test" {
+		t.Fatalf("version %s", bundle.Spec.Version)
+	}
+	if _, err := os.Stat(extracted); err != nil {
+		t.Fatal("extracted dir must exist before cleanup")
+	}
+	cleanup()
+	if _, err := os.Stat(extracted); !os.IsNotExist(err) {
+		t.Fatal("extracted release dir must be removed after cleanup")
+	}
+}
+
+func TestLoadBundleKeepsProvidedReleaseDir(t *testing.T) {
+	dir := filepath.Join("..", "release", "testdata", "good")
+	_, cleanup, err := loadBundle(context.Background(), initOptions{releaseDir: dir}, InitDeps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanup()
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal("a provided release dir must not be removed")
+	}
+}
+
 func TestRunInitRejectsConfigVersionMismatch(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "cluster.yaml")

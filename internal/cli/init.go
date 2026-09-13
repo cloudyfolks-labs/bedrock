@@ -105,7 +105,8 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	}
 
 	step(stdout, "loading release")
-	bundle, err := loadBundle(ctx, o, deps)
+	bundle, cleanupBundle, err := loadBundle(ctx, o, deps)
+	defer cleanupBundle()
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -223,19 +224,22 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	return 0
 }
 
-func loadBundle(ctx context.Context, o initOptions, deps InitDeps) (release.Bundle, error) {
+func loadBundle(ctx context.Context, o initOptions, deps InitDeps) (release.Bundle, func(), error) {
 	dir := o.releaseDir
+	cleanup := func() {}
 	if dir == "" {
 		tmp, err := os.MkdirTemp("", "bedrock-release-")
 		if err != nil {
-			return release.Bundle{}, err
+			return release.Bundle{}, cleanup, err
 		}
+		cleanup = func() { _ = os.RemoveAll(tmp) }
 		if err := deps.FromImage(ctx, o.image, runtime.GOARCH, tmp); err != nil {
-			return release.Bundle{}, err
+			return release.Bundle{}, cleanup, err
 		}
 		dir = tmp
 	}
-	return release.Load(os.DirFS(dir))
+	bundle, err := release.Load(os.DirFS(dir))
+	return bundle, cleanup, err
 }
 
 func probeDevices(ctx context.Context, deps InitDeps, paths []string) ([]host.Device, error) {
