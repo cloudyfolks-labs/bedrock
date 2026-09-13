@@ -35,7 +35,7 @@ spec:
     managementInterface: bond0.10
   storage:
     devices: [/dev/sdb]
-  roles: [control-plane, ceph-osd, fabric-gateway, workload]
+  roles: [control-plane, ceph-osd, fabric-gateway]
 `
 
 type devInfo struct{ mode fs.FileMode }
@@ -125,7 +125,7 @@ func TestRunInitHappyPath(t *testing.T) {
 	k0sConfigPath := filepath.Join(root, "etc", "k0s", "k0s.yaml")
 	installArgs := k0s.InstallArgs(k0s.InstallOptions{
 		Role: "controller", Force: true, ConfigPath: k0sConfigPath, EnableWorker: true, NoTaints: true, DynamicConfig: true,
-		Labels:            roles.Labels([]string{"control-plane", "ceph-osd", "fabric-gateway", "workload"}),
+		Labels:            roles.Labels([]string{"control-plane", "ceph-osd", "fabric-gateway"}),
 		KubeletExtraArgs:  []string{"--node-status-update-frequency=4s"},
 		DataDir:           dataDir,
 		DisableComponents: k0s.DefaultDisabledComponents,
@@ -157,7 +157,7 @@ func TestRunInitHappyPath(t *testing.T) {
 		t.Fatalf("cluster %v %v", cluster.Spec, err)
 	}
 	var h v1alpha1.Host
-	if err := c.Get(ctx, client.ObjectKey{Name: "node-1"}, &h); err != nil || len(h.Spec.Roles) != 4 {
+	if err := c.Get(ctx, client.ObjectKey{Name: "node-1"}, &h); err != nil || len(h.Spec.Roles) != 3 {
 		t.Fatalf("host %v %v", h.Spec, err)
 	}
 	var setting v1alpha1.Setting

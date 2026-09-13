@@ -68,6 +68,48 @@ func TestRunJoinInstallsWhenNotRunning(t *testing.T) {
 	}
 }
 
+func controlPlaneJoinToken(t *testing.T) string {
+	t.Helper()
+	token, err := k0s.EncodeToken(k0s.Token{
+		Version: "v0.1.0-test", Roles: []string{"control-plane"}, K0sToken: "tok",
+		K0sConfig: []byte("apiVersion: k0s.k0sproject.io/v1beta1\nkind: ClusterConfig\n"),
+		VIP:       "10.0.10.10", K0sVersion: "1.36.3+k0s.0", SupportedOS: []string{"ubuntu-24.04"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+func TestRunJoinControlPlaneEnablesWorkerWithoutWorkloadRole(t *testing.T) {
+	root, e := fakeHost(t)
+	dataDir := filepath.Join(root, "var", "lib", "k0s")
+	e.Errors["/usr/local/bin/k0s status --data-dir "+dataDir] = &host.ExitError{Code: 1}
+	configPath := filepath.Join(root, "etc", "k0s", "k0s.yaml")
+	tokenPath := filepath.Join(root, "etc", "k0s", "join-token")
+	installArgs := k0s.InstallArgs(k0s.InstallOptions{
+		Role: "controller", Force: true, ConfigPath: configPath, TokenFile: tokenPath,
+		EnableWorker: true, NoTaints: true, DynamicConfig: true, Labels: roles.Labels([]string{"control-plane"}),
+		KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: dataDir, DisableComponents: k0s.DefaultDisabledComponents,
+	})
+	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
+	var out, errOut bytes.Buffer
+	code := RunJoin(context.Background(), []string{"--token", controlPlaneJoinToken(t), "--data-dir", dataDir, "--k0s-bin", "/usr/local/bin/k0s"}, deps, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out.String(), errOut.String())
+	}
+	installed := false
+	for _, call := range e.Calls {
+		if call == "/usr/local/bin/k0s "+strings.Join(installArgs, " ") {
+			installed = true
+		}
+	}
+	if !installed {
+		t.Fatal("expected controller install to enable the kubelet")
+	}
+}
+
 func TestRunJoinSkipsInstallWhenAlreadyRunning(t *testing.T) {
 	root, e := fakeHost(t)
 	dataDir := filepath.Join(root, "var", "lib", "k0s")

@@ -107,7 +107,7 @@ func RunJoin(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		if err := os.WriteFile(configPath, token.K0sConfig, 0o600); err != nil {
 			return fail(stderr, err)
 		}
-		opts = k0s.InstallOptions{Role: "controller", ConfigPath: configPath, TokenFile: tokenPath, EnableWorker: hasRole(nodeRoles, v1alpha1.RoleWorkload), NoTaints: true, DynamicConfig: true, Labels: roles.Labels(nodeRoles), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: o.dataDir, DisableComponents: k0s.DefaultDisabledComponents}
+		opts = k0s.InstallOptions{Role: "controller", ConfigPath: configPath, TokenFile: tokenPath, EnableWorker: true, NoTaints: true, DynamicConfig: true, Labels: roles.Labels(nodeRoles), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: o.dataDir, DisableComponents: k0s.DefaultDisabledComponents}
 	}
 	step(stdout, "installing k0s %s", opts.Role)
 	if !k0sClient.Running(ctx) {
