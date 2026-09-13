@@ -16,6 +16,21 @@ dump() {
     kubectl get nodes -o wide || true
     echo "--- pods"
     kubectl get pods -A -o wide || true
+    echo "--- api reachability"
+    grep server: /var/lib/k0s/pki/admin.conf || true
+    ip -4 addr show || true
+    ss -ltnp | grep 6443 || true
+    curl -sk -m 5 "https://$vip:6443/healthz" || echo "vip healthz failed"
+    curl -sk -m 5 https://10.96.0.1/healthz || echo "service ip healthz failed"
+    kubectl get endpoints,endpointslices kubernetes -o yaml || true
+    kubectl -n kube-system get configmap kube-proxy -o yaml || true
+    echo "--- nat rules"
+    iptables-save -t nat 2>/dev/null | grep -E 'KUBE-SERVICES|10.96.0.1' | head -20 || true
+    nft list ruleset 2>/dev/null | grep -E '10.96.0.1' | head -20 || true
+    echo "--- kube-proxy log"
+    kubectl -n kube-system logs daemonset/kube-proxy --tail=100 || true
+    echo "--- kube-vip log"
+    kubectl -n kube-system logs daemonset/kube-vip --tail=100 || true
     echo "--- cluster"
     kubectl get cluster,release,host,setting -o yaml || true
     echo "--- operator log"
@@ -54,7 +69,7 @@ docker save "$image" -o "$workdir/preload/bedrock.tar"
 VERSION=$version VIP=$vip IFACE=$iface DEVICE=$device envsubst < hack/e2e/cluster.yaml.tmpl > "$workdir/cluster.yaml"
 cat "$workdir/cluster.yaml"
 
-bin/bedrock init -f "$workdir/cluster.yaml" --release-dir dist/release --images-dir "$workdir/preload" --timeout 40m
+bin/bedrock init -f "$workdir/cluster.yaml" --release-dir dist/release --images-dir "$workdir/preload" --timeout 20m
 
 kubectl get nodes -o wide
 kubectl wait --for=condition=Ready node --all --timeout=300s
