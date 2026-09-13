@@ -56,12 +56,26 @@ func ApplyRoles(node *corev1.Node, roles []string) bool {
 	desiredTaints := slices.DeleteFunc(slices.Clone(node.Spec.Taints), func(t corev1.Taint) bool { return t.Key == taintNoWorkload })
 	desiredTaints = append(desiredTaints, RoleTaints(roles)...)
 
-	changed := !maps.Equal(node.Labels, desiredLabels) || !slices.EqualFunc(node.Spec.Taints, desiredTaints, taintEqual)
+	changed := !maps.Equal(node.Labels, desiredLabels) || !taintsEqual(node.Spec.Taints, desiredTaints)
 	node.Labels = desiredLabels
 	node.Spec.Taints = desiredTaints
 	return changed
 }
 
-func taintEqual(a, b corev1.Taint) bool {
-	return a.Key == b.Key && a.Value == b.Value && a.Effect == b.Effect
+type taintKey struct {
+	Key    string
+	Value  string
+	Effect corev1.TaintEffect
+}
+
+func taintSet(taints []corev1.Taint) map[taintKey]int {
+	set := make(map[taintKey]int, len(taints))
+	for _, t := range taints {
+		set[taintKey{Key: t.Key, Value: t.Value, Effect: t.Effect}]++
+	}
+	return set
+}
+
+func taintsEqual(a, b []corev1.Taint) bool {
+	return maps.Equal(taintSet(a), taintSet(b))
 }

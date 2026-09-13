@@ -48,3 +48,20 @@ func TestApplyRolesIsIdempotentAndClears(t *testing.T) {
 		t.Fatal("second apply must report no change")
 	}
 }
+
+func TestApplyRolesTaintOrderIsIgnored(t *testing.T) {
+	node := &corev1.Node{}
+	node.Spec.Taints = []corev1.Taint{
+		{Key: "dedicated", Value: "gpu", Effect: corev1.TaintEffectNoSchedule},
+		{Key: "bedrock.cloudyfolks.io/no-workload", Effect: corev1.TaintEffectNoSchedule},
+	}
+	ApplyRoles(node, []string{v1alpha1.RoleControlPlane})
+
+	node.Spec.Taints = []corev1.Taint{
+		{Key: "bedrock.cloudyfolks.io/no-workload", Effect: corev1.TaintEffectNoSchedule},
+		{Key: "dedicated", Value: "gpu", Effect: corev1.TaintEffectNoSchedule},
+	}
+	if ApplyRoles(node, []string{v1alpha1.RoleControlPlane}) {
+		t.Fatal("reordered taints must not report a change")
+	}
+}

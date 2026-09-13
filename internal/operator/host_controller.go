@@ -34,7 +34,7 @@ func (r *HostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	patch := client.MergeFrom(node.DeepCopy())
+	patch := client.MergeFromWithOptions(node.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	if ApplyRoles(&node, host.Spec.Roles) {
 		if err := r.Client.Patch(ctx, &node, patch); err != nil {
 			return ctrl.Result{}, err
@@ -56,6 +56,7 @@ func hostStatus(host v1alpha1.Host, node *corev1.Node, ready metav1.ConditionSta
 	status := host.Status
 	status.Conditions = slices.Clone(host.Status.Conditions)
 	status.ObservedGeneration = host.Generation
+	status.KubernetesVersion = ""
 	if node != nil {
 		status.KubernetesVersion = node.Status.NodeInfo.KubeletVersion
 	}

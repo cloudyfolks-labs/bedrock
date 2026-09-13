@@ -43,6 +43,19 @@ func TestHostStatusDoesNotMutateInput(t *testing.T) {
 	}
 }
 
+func TestHostStatusClearsVersionWhenNodeMissing(t *testing.T) {
+	host := v1alpha1.Host{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-1", Generation: 2},
+		Status:     v1alpha1.HostStatus{KubernetesVersion: "v1.30.0"},
+	}
+
+	next := hostStatus(host, nil, metav1.ConditionFalse, "NodeMissing", "no Node with this name")
+
+	if next.KubernetesVersion != "" {
+		t.Fatalf("expected empty KubernetesVersion when node is missing, got %q", next.KubernetesVersion)
+	}
+}
+
 func TestHostStatusEqualIgnoresTransitionTime(t *testing.T) {
 	a := v1alpha1.HostStatus{
 		ObservedGeneration: 3,
