@@ -195,9 +195,7 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		}
 		fmt.Fprintf(stdout, "group %s ready\n", group.Name)
 	}
-	varsCtx, cancelVars := context.WithTimeout(ctx, 10*time.Minute)
-	vars, err := release.WaitVars(varsCtx, c, cfg.Spec.API.VIP, 2*time.Second)
-	cancelVars()
+	vars, err := clusterVars(ctx, c, bundle, cfg.Spec.API.VIP)
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -222,6 +220,15 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	fmt.Fprintf(stdout, "kubeconfig: %s\n", filepath.Join(o.dataDir, "pki", "admin.conf"))
 	fmt.Fprintf(stdout, "join nodes with: bedrock token create --roles %s\n", strings.Join(cfg.Spec.Roles, ","))
 	return 0
+}
+
+func clusterVars(ctx context.Context, c client.Client, bundle release.Bundle, vip string) (map[string]string, error) {
+	if !release.Uses(bundle, release.VarMasterIPs) {
+		return release.Vars(ctx, c, vip)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	return release.WaitVars(waitCtx, c, vip, 2*time.Second)
 }
 
 func loadBundle(ctx context.Context, o initOptions, deps InitDeps) (release.Bundle, func(), error) {

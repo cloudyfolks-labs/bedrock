@@ -28,6 +28,21 @@ func testBundle(t *testing.T) release.Bundle {
 	return bundle
 }
 
+func testBundleUsingMasterIPs(t *testing.T) release.Bundle {
+	t.Helper()
+	bundle := testBundle(t)
+	for _, group := range bundle.Groups {
+		for _, obj := range group.Objects {
+			if obj.GetKind() == "ConfigMap" && obj.GetName() == "beta" {
+				if err := unstructured.SetNestedField(obj.Object, "${BEDROCK_MASTER_IPS}", "data", "key"); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	return bundle
+}
+
 func newCluster(version string) *v1alpha1.Cluster {
 	return &v1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: v1alpha1.ClusterName}, Spec: v1alpha1.ClusterSpec{DesiredVersion: version, API: v1alpha1.APISpec{VIP: "10.0.0.10", VIPMode: "arp"}, NodeConcurrency: 1}}
 }
@@ -204,7 +219,7 @@ func TestClusterReconcilerWaitsForMasterNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &ClusterReconciler{Client: mgr.GetClient(), Bundle: testBundle(t), Gates: release.Gates{}, Interval: 200 * time.Millisecond, GroupTimeout: 20 * time.Second}
+	r := &ClusterReconciler{Client: mgr.GetClient(), Bundle: testBundleUsingMasterIPs(t), Gates: release.Gates{}, Interval: 200 * time.Millisecond, GroupTimeout: 20 * time.Second}
 	if err := r.SetupWithManager(mgr); err != nil {
 		t.Fatal(err)
 	}
@@ -228,5 +243,43 @@ func TestClusterReconcilerWaitsForMasterNodes(t *testing.T) {
 	var alpha corev1.ConfigMap
 	if err := c.Get(ctx, client.ObjectKey{Namespace: "release-test", Name: "alpha"}, &alpha); err == nil {
 		t.Fatal("nothing must be applied while waiting for master nodes")
+	}
+}
+
+func TestClusterReconcilerInstallsWithoutMasterNodesWhenBundleDoesNotNeedThem(t *testing.T) {
+	c, cfg := StartTestEnv(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: release.SystemNamespace}}); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := ctrl.NewManager(cfg, testManagerOptions(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &ClusterReconciler{Client: mgr.GetClient(), Bundle: testBundle(t), Gates: release.Gates{}, Interval: 200 * time.Millisecond, GroupTimeout: 20 * time.Second}
+	if err := r.SetupWithManager(mgr); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = mgr.Start(ctx) }()
+
+	if err := c.Create(ctx, newCluster("v0.1.0-test")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		var got v1alpha1.Cluster
+		if err := c.Get(ctx, client.ObjectKey{Name: v1alpha1.ClusterName}, &got); err != nil {
+			return false
+		}
+		return got.Status.Phase == v1alpha1.PhaseIdle && v1alpha1.IsConditionTrue(got.Status.Conditions, v1alpha1.ConditionAvailable)
+	})
+	var got v1alpha1.Cluster
+	if err := c.Get(ctx, client.ObjectKey{Name: v1alpha1.ClusterName}, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, cond := range got.Status.Conditions {
+		if cond.Reason == "WaitingForMasterNodes" {
+			t.Fatal("bundle without the master placeholder must not wait for master nodes")
+		}
 	}
 }
