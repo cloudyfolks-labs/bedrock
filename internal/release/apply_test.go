@@ -100,6 +100,35 @@ func TestApplyThenPrune(t *testing.T) {
 	}
 }
 
+func TestInstallAppliesAllGroupsAndPrunes(t *testing.T) {
+	c, _ := startTestEnv(t)
+	ctx := context.Background()
+	bundle, err := Load(os.DirFS("testdata/good"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: SystemNamespace}}); err != nil {
+		t.Fatal(err)
+	}
+	var reported []string
+	report := func(group Group, err error) { reported = append(reported, group.Name) }
+	if err := Install(ctx, c, bundle, Gates{}, 200*time.Millisecond, 0, report); err != nil {
+		t.Fatal(err)
+	}
+	if len(reported) != 2 || reported[0] != "crds" || reported[1] != "bedrock" {
+		t.Fatalf("reported %v", reported)
+	}
+	smaller := bundle
+	smaller.Groups = []Group{bundle.Groups[0], {Order: 90, Name: "bedrock", Objects: bundle.Groups[1].Objects[:2]}}
+	if err := Install(ctx, c, smaller, Gates{}, 200*time.Millisecond, 0, report); err != nil {
+		t.Fatal(err)
+	}
+	var beta corev1.ConfigMap
+	if err := c.Get(ctx, client.ObjectKey{Namespace: "release-test", Name: "beta"}, &beta); !errors.IsNotFound(err) {
+		t.Fatalf("beta must be pruned by the second install, got %v", err)
+	}
+}
+
 func TestReadInventoryWhenMissing(t *testing.T) {
 	c, _ := startTestEnv(t)
 	ctx := context.Background()

@@ -21,3 +21,14 @@ func TestReleaseBuildRequiresFlags(t *testing.T) {
 		t.Fatalf("stderr %q", errOut.String())
 	}
 }
+
+func TestReleaseApplyRequiresDir(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := Run([]string{"release", "apply"}, &out, &errOut)
+	if code != 2 {
+		t.Fatalf("exit %d, want 2", code)
+	}
+	if !bytes.Contains(errOut.Bytes(), []byte("--dir")) {
+		t.Fatalf("stderr %q", errOut.String())
+	}
+}

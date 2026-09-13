@@ -1,6 +1,7 @@
 .git
 bin/
 dist/
+!dist/release
 .superpowers/
 ui/node_modules/
 *.test

@@ -8,4 +8,5 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/cloudyfolks-labs/be
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=build /bedrock /bedrock
+COPY dist/release /release
 ENTRYPOINT ["/bedrock"]
