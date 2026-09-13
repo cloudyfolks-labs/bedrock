@@ -47,6 +47,7 @@ type NetworkSpec struct {
 
 type StorageSpec struct {
 	Devices []string `json:"devices"`
+	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`
 }
@@ -79,6 +80,7 @@ type ClusterConfigSpec struct {
 	// +optional
 	Host HostDefaults `json:"host,omitempty"`
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:items:Enum=control-plane;ceph-osd;fabric-gateway;workload
 	Roles []string `json:"roles"`
 }
 

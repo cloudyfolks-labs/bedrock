@@ -36,6 +36,8 @@ func TestValidateRejectsBadInput(t *testing.T) {
 		"bad eip mode":     func(c *v1alpha1.ClusterConfig) { c.Spec.Network.Fabric.EIPMode = "arp" },
 		"bad cidr":         func(c *v1alpha1.ClusterConfig) { c.Spec.Network.Fabric.PodCIDR = "10.16.0.0" },
 		"no version":       func(c *v1alpha1.ClusterConfig) { c.Spec.Version = "" },
+		"wrong apiVersion": func(c *v1alpha1.ClusterConfig) { c.APIVersion = "bedrock.cloudyfolks.io/v1" },
+		"wrong kind":       func(c *v1alpha1.ClusterConfig) { c.Kind = "Cluster" },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

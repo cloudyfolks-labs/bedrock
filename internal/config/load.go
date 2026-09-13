@@ -61,6 +61,12 @@ func fallback(value, def string) string {
 }
 
 func Validate(cfg v1alpha1.ClusterConfig) error {
+	if cfg.APIVersion != v1alpha1.GroupVersion.String() {
+		return fmt.Errorf("apiVersion must be %s", v1alpha1.GroupVersion.String())
+	}
+	if cfg.Kind != "ClusterConfig" {
+		return fmt.Errorf("kind must be ClusterConfig")
+	}
 	s := cfg.Spec
 	if s.Version == "" {
 		return fmt.Errorf("spec.version is required")

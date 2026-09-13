@@ -129,6 +129,11 @@ spec:
                 type: object
               roles:
                 items:
+                  enum:
+                  - control-plane
+                  - ceph-osd
+                  - fabric-gateway
+                  - workload
                   type: string
                 minItems: 1
                 type: array
@@ -140,6 +145,7 @@ spec:
                     type: array
                   replicas:
                     format: int32
+                    minimum: 1
                     type: integer
                 required:
                 - devices
