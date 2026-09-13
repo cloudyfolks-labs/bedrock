@@ -15,6 +15,9 @@ func Commands() map[string]Command {
 		"version":  versionCommand,
 		"operator": operatorCommand,
 		"release":  releaseCommand,
+		"init":     initCommand,
+		"join":     joinCommand,
+		"token":    tokenCommand,
 	}
 }
 
