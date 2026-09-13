@@ -2,6 +2,9 @@ package operator
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -10,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
+	"github.com/cloudyfolks-labs/bedrock/internal/release"
 	"github.com/cloudyfolks-labs/bedrock/internal/settings"
 )
 
@@ -24,7 +28,15 @@ func Scheme() (*runtime.Scheme, error) {
 	return scheme, nil
 }
 
-func Run(ctx context.Context, cfg *rest.Config, scheme *runtime.Scheme) error {
+type RunOptions struct {
+	ReleaseDir string
+}
+
+func Run(ctx context.Context, cfg *rest.Config, scheme *runtime.Scheme, opts RunOptions) error {
+	bundle, err := release.Load(os.DirFS(opts.ReleaseDir))
+	if err != nil {
+		return fmt.Errorf("load release from %s: %w", opts.ReleaseDir, err)
+	}
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme, LeaderElection: true, LeaderElectionID: "bedrock-operator", LeaderElectionNamespace: "bedrock-system"})
 	if err != nil {
 		return err
@@ -33,6 +45,9 @@ func Run(ctx context.Context, cfg *rest.Config, scheme *runtime.Scheme) error {
 		return err
 	}
 	if err := (&HostReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		return err
+	}
+	if err := (&ClusterReconciler{Client: mgr.GetClient(), Bundle: bundle, Gates: release.Gates{}, Interval: 2 * time.Second, GroupTimeout: 30 * time.Minute}).SetupWithManager(mgr); err != nil {
 		return err
 	}
 	if err := mgr.Add(seeder{client: mgr.GetClient()}); err != nil {

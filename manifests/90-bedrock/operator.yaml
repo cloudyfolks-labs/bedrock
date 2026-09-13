@@ -14,26 +14,6 @@ metadata:
     bedrock.cloudyfolks.io/component: bedrock
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: bedrock-operator
-  labels:
-    bedrock.cloudyfolks.io/component: bedrock
-rules:
-  - apiGroups: ["bedrock.cloudyfolks.io"]
-    resources: ["*"]
-    verbs: ["*"]
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "list", "watch", "patch"]
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
-    verbs: ["*"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: bedrock-operator
@@ -42,7 +22,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: bedrock-operator
+  name: cluster-admin
 subjects:
   - kind: ServiceAccount
     name: bedrock-operator
@@ -73,6 +53,9 @@ spec:
         - name: operator
           image: ghcr.io/cloudyfolks-labs/bedrock:dev
           args: ["operator"]
+          env:
+            - name: BEDROCK_RELEASE_DIR
+              value: /release
           resources:
             requests:
               cpu: 50m
