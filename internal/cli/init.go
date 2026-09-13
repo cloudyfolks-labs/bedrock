@@ -188,7 +188,9 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		}
 		fmt.Fprintf(stdout, "group %s ready\n", group.Name)
 	}
-	vars, err := release.Vars(ctx, c, cfg.Spec.API.VIP)
+	varsCtx, cancelVars := context.WithTimeout(ctx, 10*time.Minute)
+	vars, err := release.WaitVars(varsCtx, c, cfg.Spec.API.VIP, 2*time.Second)
+	cancelVars()
 	if err != nil {
 		return fail(stderr, err)
 	}

@@ -2,8 +2,10 @@ package release
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,4 +36,23 @@ func Vars(ctx context.Context, c client.Client, vip string) (map[string]string, 
 		vars[VarMasterIPs] = strings.Join(ips, ",")
 	}
 	return vars, nil
+}
+
+func WaitVars(ctx context.Context, c client.Client, vip string, interval time.Duration) (map[string]string, error) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	lastErr := fmt.Errorf("no master node registered yet")
+	for {
+		vars, err := Vars(ctx, c, vip)
+		if err != nil {
+			lastErr = err
+		} else if vars[VarMasterIPs] != "" {
+			return vars, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, lastErr
+		case <-ticker.C:
+		}
+	}
 }
