@@ -27,6 +27,17 @@ func TestRunNoArgsPrintsUsage(t *testing.T) {
 	}
 }
 
+func TestRunHelpPrintsUsage(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := Run([]string{"--help"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code %d, want 0", code)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("usage: bedrock <command>")) {
+		t.Fatalf("stdout %q", out.String())
+	}
+}
+
 func TestRunVersion(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := Run([]string{"version"}, &out, &errOut)

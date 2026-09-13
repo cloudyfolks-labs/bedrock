@@ -22,6 +22,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		printUsage(stdout)
 		return 2
 	}
+	if isHelpFlag(args[0]) {
+		printUsage(stdout)
+		return 0
+	}
 	command, ok := Commands()[args[0]]
 	if !ok {
 		fmt.Fprintf(stderr, "unknown command: %s\n", args[0])
@@ -33,6 +37,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 func versionCommand(_ []string, stdout, _ io.Writer) int {
 	fmt.Fprintf(stdout, "bedrock %s\n", Version)
 	return 0
+}
+
+func isHelpFlag(arg string) bool {
+	return arg == "-h" || arg == "--help" || arg == "help"
 }
 
 func printUsage(w io.Writer) {
