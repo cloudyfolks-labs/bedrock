@@ -26,6 +26,7 @@ type ComponentConfig struct {
 	Namespace   string   `json:"namespace,omitempty"`
 	Values      string   `json:"values,omitempty"`
 	CRDsToGroup string   `json:"crdsToGroup,omitempty"`
+	ExtraImages []string `json:"extraImages,omitempty"`
 }
 
 type BuildConfig struct {
@@ -128,7 +129,28 @@ func Build(cfg BuildConfig, opts BuildOptions) error {
 		SupportedOS: cfg.SupportedOS,
 		Components:  componentSpecs(cfg, groups, opts.Version),
 	}
-	return writeMetadata(opts.Out, spec, ImagesOf(groups))
+	return writeMetadata(opts.Out, spec, mergeImages(ImagesOf(groups), extraImagesOf(cfg)))
+}
+
+func extraImagesOf(cfg BuildConfig) []string {
+	var images []string
+	for _, component := range cfg.Components {
+		images = append(images, component.ExtraImages...)
+	}
+	return images
+}
+
+func mergeImages(images, extra []string) []string {
+	seen := map[string]struct{}{}
+	merged := make([]string, 0, len(images)+len(extra))
+	for _, image := range append(append([]string{}, images...), extra...) {
+		if _, ok := seen[image]; ok {
+			continue
+		}
+		seen[image] = struct{}{}
+		merged = append(merged, image)
+	}
+	return merged
 }
 
 func renderComponent(component ComponentConfig, dirs map[string]string, opts BuildOptions) ([]rendered, error) {
@@ -307,8 +329,11 @@ func componentSpecs(cfg BuildConfig, groups []Group, version string) []v1alpha1.
 		}
 		images := ImagesOf([]Group{byName[component.Name]})
 		image := ""
-		if len(images) > 0 {
+		switch {
+		case len(images) > 0:
 			image = images[0]
+		case len(component.ExtraImages) > 0:
+			image = component.ExtraImages[0]
 		}
 		specs = append(specs, v1alpha1.ReleaseComponent{Name: component.Name, Version: componentVersion, Image: image})
 	}

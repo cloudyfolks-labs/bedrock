@@ -11,6 +11,7 @@ components:
     namespace: widgets
     values: values/chart.yaml
     crdsToGroup: crds
+    extraImages: [quay.io/example/extra:1]
   - name: bedrock
     order: 90
     dirs: [manifests/90-bedrock]

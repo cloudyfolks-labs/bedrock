@@ -24,6 +24,7 @@ components:
     namespace: cert-manager
     values: release/values/cert-manager.yaml
     crdsToGroup: crds
+    extraImages: [quay.io/jetstack/cert-manager-acmesolver:v1.20.2]
   - name: monitoring
     order: 70
     chart: charts/metrics-server

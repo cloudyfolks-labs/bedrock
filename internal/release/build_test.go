@@ -48,7 +48,7 @@ func TestBuildRendersChartsAndDirs(t *testing.T) {
 		t.Fatalf("operator image not rewritten: %v", operatorImages)
 	}
 	images := bundle.Images
-	if len(images) != 2 || images[0] != "ghcr.io/cloudyfolks-labs/bedrock:v9.9.9" || images[1] != "quay.io/example/widgets:0.1.0" {
+	if len(images) != 3 || images[0] != "ghcr.io/cloudyfolks-labs/bedrock:v9.9.9" || images[1] != "quay.io/example/extra:1" || images[2] != "quay.io/example/widgets:0.1.0" {
 		t.Fatalf("images %v", images)
 	}
 	if len(bundle.Spec.Components) != 3 || bundle.Spec.Components[1].Version != "0.1.0" || bundle.Spec.Components[1].Image != "quay.io/example/widgets:0.1.0" {
