@@ -32,6 +32,18 @@ func newCluster(version string) *v1alpha1.Cluster {
 	return &v1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: v1alpha1.ClusterName}, Spec: v1alpha1.ClusterSpec{DesiredVersion: version, API: v1alpha1.APISpec{VIP: "10.0.0.10", VIPMode: "arp"}, NodeConcurrency: 1}}
 }
 
+func createMasterNode(t *testing.T, ctx context.Context, c client.Client) {
+	t.Helper()
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "master-1", Labels: map[string]string{"fabric/role": "master"}}}
+	if err := c.Create(ctx, node); err != nil {
+		t.Fatal(err)
+	}
+	node.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.10.11"}}
+	if err := c.Status().Update(ctx, node); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClusterReconcilerInstallsEmbeddedRelease(t *testing.T) {
 	c, cfg := StartTestEnv(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -49,6 +61,7 @@ func TestClusterReconcilerInstallsEmbeddedRelease(t *testing.T) {
 	}
 	go func() { _ = mgr.Start(ctx) }()
 
+	createMasterNode(t, ctx, c)
 	if err := c.Create(ctx, newCluster("v0.1.0-test")); err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +113,7 @@ func TestClusterReconcilerAwaitsUpgradeForOtherVersion(t *testing.T) {
 	}
 	go func() { _ = mgr.Start(ctx) }()
 
+	createMasterNode(t, ctx, c)
 	if err := c.Create(ctx, newCluster("v0.2.0")); err != nil {
 		t.Fatal(err)
 	}
@@ -146,6 +160,7 @@ func TestClusterReconcilerFailsAndResumes(t *testing.T) {
 	}
 	go func() { _ = mgr.Start(ctx) }()
 
+	createMasterNode(t, ctx, c)
 	if err := c.Create(ctx, newCluster("v0.1.0-test")); err != nil {
 		t.Fatal(err)
 	}
@@ -176,4 +191,42 @@ func TestClusterReconcilerFailsAndResumes(t *testing.T) {
 		}
 		return got.Status.Phase == v1alpha1.PhaseIdle && got.Status.Version == "v0.1.0-test" && got.Spec.Upgrade.Action == ""
 	})
+}
+
+func TestClusterReconcilerWaitsForMasterNodes(t *testing.T) {
+	c, cfg := StartTestEnv(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: release.SystemNamespace}}); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := ctrl.NewManager(cfg, testManagerOptions(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &ClusterReconciler{Client: mgr.GetClient(), Bundle: testBundle(t), Gates: release.Gates{}, Interval: 200 * time.Millisecond, GroupTimeout: 20 * time.Second}
+	if err := r.SetupWithManager(mgr); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = mgr.Start(ctx) }()
+
+	if err := c.Create(ctx, newCluster("v0.1.0-test")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		var got v1alpha1.Cluster
+		if err := c.Get(ctx, client.ObjectKey{Name: v1alpha1.ClusterName}, &got); err != nil {
+			return false
+		}
+		for _, cond := range got.Status.Conditions {
+			if cond.Type == v1alpha1.ConditionProgressing && cond.Status == metav1.ConditionTrue && cond.Reason == "WaitingForMasterNodes" {
+				return true
+			}
+		}
+		return false
+	})
+	var alpha corev1.ConfigMap
+	if err := c.Get(ctx, client.ObjectKey{Namespace: "release-test", Name: "alpha"}, &alpha); err == nil {
+		t.Fatal("nothing must be applied while waiting for master nodes")
+	}
 }

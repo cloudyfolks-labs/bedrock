@@ -14,3 +14,4 @@ networking:
       v4: 100.64.0.0/16
 masterNodesLabels:
   fabric/role: master
+masterNodes: ["${BEDROCK_MASTER_IPS}"]

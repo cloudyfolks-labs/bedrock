@@ -11,6 +11,7 @@ done
 grep -q 'kind: CustomResourceDefinition' "$dir/manifests/00-crds/cert-manager-crds.yaml"
 grep -q 'kind: DaemonSet' "$dir/manifests/10-kube-vip/kube-vip.yaml"
 grep -q 'name: fabric' "$dir/manifests/20-fabric/fabric.yaml"
+grep -q 'BEDROCK_MASTER_IPS' "$dir/manifests/20-fabric/fabric.yaml"
 grep -q 'kind: CustomResourceDefinition' "$dir/manifests/00-crds/fabric-crds.yaml"
 grep -q 'name: cert-manager' "$dir/manifests/60-cert-manager/cert-manager.yaml"
 grep -q 'metrics-server' "$dir/manifests/70-monitoring/monitoring.yaml"

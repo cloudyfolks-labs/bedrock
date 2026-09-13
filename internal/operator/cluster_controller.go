@@ -57,10 +57,19 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 	}
-	return ctrl.Result{}, r.install(ctx, cluster.Generation)
+	vars, err := release.Vars(ctx, r.Client, cluster.Spec.API.VIP)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if vars[release.VarMasterIPs] == "" {
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, r.writeStatus(ctx, func(s *v1alpha1.ClusterStatus) {
+			setCondition(s, v1alpha1.ConditionProgressing, metav1.ConditionTrue, "WaitingForMasterNodes", "no node carries fabric/role=master yet", cluster.Generation)
+		})
+	}
+	return ctrl.Result{}, r.install(ctx, cluster.Generation, vars)
 }
 
-func (r *ClusterReconciler) install(ctx context.Context, generation int64) error {
+func (r *ClusterReconciler) install(ctx context.Context, generation int64, vars map[string]string) error {
 	if err := r.writeStatus(ctx, func(s *v1alpha1.ClusterStatus) {
 		s.Phase = v1alpha1.PhaseComponents
 		s.Components = nil
@@ -75,7 +84,7 @@ func (r *ClusterReconciler) install(ctx context.Context, generation int64) error
 			ctrl.LoggerFrom(ctx).Error(err, "write component status", "component", group.Name)
 		}
 	}
-	err := release.Install(ctx, r.Client, r.Bundle, r.Gates, r.Interval, r.GroupTimeout, report)
+	err := release.Install(ctx, r.Client, r.Bundle, vars, r.Gates, r.Interval, r.GroupTimeout, report)
 	if err != nil {
 		if ctx.Err() != nil {
 			return err

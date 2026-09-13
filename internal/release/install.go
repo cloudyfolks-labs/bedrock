@@ -8,7 +8,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func Install(ctx context.Context, c client.Client, bundle Bundle, gates Gates, interval, groupTimeout time.Duration, report func(group Group, err error)) error {
+func Install(ctx context.Context, c client.Client, bundle Bundle, vars map[string]string, gates Gates, interval, groupTimeout time.Duration, report func(group Group, err error)) error {
+	bundle, err := Substitute(bundle, vars)
+	if err != nil {
+		return err
+	}
 	previous, err := ReadInventory(ctx, c)
 	if err != nil {
 		return err

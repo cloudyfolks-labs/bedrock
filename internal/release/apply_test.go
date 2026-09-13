@@ -125,7 +125,7 @@ func TestInstallAppliesAllGroupsAndPrunes(t *testing.T) {
 	}
 	var reported []string
 	report := func(group Group, err error) { reported = append(reported, group.Name) }
-	if err := Install(ctx, c, bundle, Gates{}, 200*time.Millisecond, 0, report); err != nil {
+	if err := Install(ctx, c, bundle, nil, Gates{}, 200*time.Millisecond, 0, report); err != nil {
 		t.Fatal(err)
 	}
 	if len(reported) != 2 || reported[0] != "crds" || reported[1] != "bedrock" {
@@ -133,7 +133,7 @@ func TestInstallAppliesAllGroupsAndPrunes(t *testing.T) {
 	}
 	smaller := bundle
 	smaller.Groups = []Group{bundle.Groups[0], {Order: 90, Name: "bedrock", Objects: bundle.Groups[1].Objects[:2]}}
-	if err := Install(ctx, c, smaller, Gates{}, 200*time.Millisecond, 0, report); err != nil {
+	if err := Install(ctx, c, smaller, nil, Gates{}, 200*time.Millisecond, 0, report); err != nil {
 		t.Fatal(err)
 	}
 	var beta corev1.ConfigMap

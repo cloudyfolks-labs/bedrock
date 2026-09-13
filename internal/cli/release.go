@@ -70,6 +70,7 @@ func releaseApply(args []string, stdout, stderr io.Writer) int {
 	dir := flags.String("dir", "", "release directory")
 	timeout := flags.Duration("timeout", 10*time.Minute, "overall timeout")
 	interval := flags.Duration("interval", 2*time.Second, "readiness poll interval")
+	vip := flags.String("vip", "", "cluster api vip")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -103,6 +104,11 @@ func releaseApply(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
+	vars, err := release.Vars(ctx, c, *vip)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	report := func(group release.Group, err error) {
 		if err != nil {
 			fmt.Fprintf(stdout, "group %s failed\n", group.Name)
@@ -110,7 +116,7 @@ func releaseApply(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "group %s ready\n", group.Name)
 	}
-	if err := release.Install(ctx, c, bundle, release.Gates{}, *interval, 0, report); err != nil {
+	if err := release.Install(ctx, c, bundle, vars, release.Gates{}, *interval, 0, report); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
