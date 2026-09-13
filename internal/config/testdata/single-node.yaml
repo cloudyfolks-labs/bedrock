@@ -1,0 +1,25 @@
+apiVersion: bedrock.cloudyfolks.io/v1alpha1
+kind: ClusterConfig
+metadata:
+  name: lab
+spec:
+  version: v0.1.0
+  api:
+    vip: 10.0.10.10
+  network:
+    managementInterface: bond0
+    fabric:
+      eipMode: l2
+      providerNetworks:
+        - name: public
+          interface: bond0
+          vlan: 100
+          cidr: 91.246.31.0/24
+          gateway: 91.246.31.1
+  storage:
+    devices: [/dev/nvme1n1]
+  registry:
+    bundle: /opt/bedrock/bundle.tar.zst
+  addons:
+    kata: true
+  roles: [control-plane, ceph-osd, fabric-gateway, workload]
