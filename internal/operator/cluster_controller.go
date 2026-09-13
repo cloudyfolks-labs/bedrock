@@ -75,6 +75,9 @@ func (r *ClusterReconciler) install(ctx context.Context, generation int64) error
 	}
 	err := release.Install(ctx, r.Client, r.Bundle, r.Gates, r.Interval, r.GroupTimeout, report)
 	if err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
 		return r.writeStatus(ctx, func(s *v1alpha1.ClusterStatus) {
 			s.Phase = v1alpha1.PhaseFailed
 			setCondition(s, v1alpha1.ConditionDegraded, metav1.ConditionTrue, "GroupFailed", err.Error(), generation)
