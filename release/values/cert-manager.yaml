@@ -4,3 +4,5 @@ crds:
 global:
   leaderElection:
     namespace: cert-manager
+startupapicheck:
+  enabled: false
