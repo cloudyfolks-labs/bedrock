@@ -41,6 +41,8 @@ func releaseBuild(args []string, stdout, stderr io.Writer) int {
 	out := flags.String("out", "dist/release", "output directory")
 	helm := flags.String("helm", "helm", "helm binary")
 	root := flags.String("root", ".", "repository root the config paths are relative to")
+	k0sBaseURL := flags.String("k0s-base-url", release.DefaultK0sBaseURL, "base url for k0s binaries")
+	cacheDir := flags.String("cache-dir", "dist/cache", "download cache")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -53,7 +55,8 @@ func releaseBuild(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if err := release.Build(cfg, release.BuildOptions{Version: *version, Image: *image, Out: *out, Helm: *helm, Root: *root}); err != nil {
+	opts := release.BuildOptions{Version: *version, Image: *image, Out: *out, Helm: *helm, Root: *root, K0sBaseURL: *k0sBaseURL, CacheDir: *cacheDir}
+	if err := release.Build(cfg, opts); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}

@@ -1,9 +1,12 @@
 package release
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -18,7 +21,11 @@ func TestBuildRendersChartsAndDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := t.TempDir()
-	opts := BuildOptions{Version: "v9.9.9", Image: "ghcr.io/cloudyfolks-labs/bedrock:v9.9.9", Out: out, Helm: "helm", Root: filepath.Join("testdata", "build")}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("binary for " + r.URL.Path))
+	}))
+	defer server.Close()
+	opts := BuildOptions{Version: "v9.9.9", Image: "ghcr.io/cloudyfolks-labs/bedrock:v9.9.9", Out: out, Helm: "helm", Root: filepath.Join("testdata", "build"), K0sBaseURL: server.URL, CacheDir: t.TempDir()}
 	if err := Build(cfg, opts); err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +60,12 @@ func TestBuildRendersChartsAndDirs(t *testing.T) {
 	}
 	if len(bundle.Spec.Components) != 3 || bundle.Spec.Components[1].Version != "0.1.0" || bundle.Spec.Components[1].Image != "quay.io/example/widgets:0.1.0" {
 		t.Fatalf("components %+v", bundle.Spec.Components)
+	}
+	if !strings.HasPrefix(bundle.Spec.K0sChecksums["amd64"], "sha256:") {
+		t.Fatalf("k0s amd64 checksum %+v", bundle.Spec.K0sChecksums)
+	}
+	if !strings.HasPrefix(bundle.Spec.K0sChecksums["arm64"], "sha256:") {
+		t.Fatalf("k0s arm64 checksum %+v", bundle.Spec.K0sChecksums)
 	}
 }
 

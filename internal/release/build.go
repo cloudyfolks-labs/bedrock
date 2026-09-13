@@ -2,6 +2,7 @@ package release
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,11 +38,13 @@ type BuildConfig struct {
 }
 
 type BuildOptions struct {
-	Version string
-	Image   string
-	Out     string
-	Helm    string
-	Root    string
+	Version    string
+	Image      string
+	Out        string
+	Helm       string
+	Root       string
+	K0sBaseURL string
+	CacheDir   string
 }
 
 func LoadBuildConfig(path string) (BuildConfig, error) {
@@ -128,6 +131,13 @@ func Build(cfg BuildConfig, opts BuildOptions) error {
 		UpgradeFrom: cfg.UpgradeFrom,
 		SupportedOS: cfg.SupportedOS,
 		Components:  componentSpecs(cfg, groups, opts.Version),
+	}
+	if opts.K0sBaseURL != "" {
+		sums, err := K0sChecksums(context.Background(), opts.K0sBaseURL, cfg.K0sVersion, []string{"amd64", "arm64"}, opts.CacheDir)
+		if err != nil {
+			return err
+		}
+		spec.K0sChecksums = sums
 	}
 	return writeMetadata(opts.Out, spec, mergeImages(ImagesOf(groups), extraImagesOf(cfg)))
 }

@@ -22,6 +22,8 @@ type ReleaseSpec struct {
 	Components []ReleaseComponent `json:"components,omitempty"`
 	// +optional
 	SupportedOS []string `json:"supportedOS,omitempty"`
+	// +optional
+	K0sChecksums map[string]string `json:"k0sChecksums,omitempty"`
 }
 
 type ReleaseStatus struct {

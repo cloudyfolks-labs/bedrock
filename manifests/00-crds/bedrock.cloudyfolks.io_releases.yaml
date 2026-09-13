@@ -61,6 +61,10 @@ spec:
                 type: array
               image:
                 type: string
+              k0sChecksums:
+                additionalProperties:
+                  type: string
+                type: object
               k0sVersion:
                 type: string
               supportedOS:

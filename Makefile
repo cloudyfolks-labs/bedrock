@@ -44,4 +44,4 @@ e2e-kind: build crds release crane
 
 release: build
 	@command -v $(HELM) >/dev/null || { echo "helm is required"; exit 1; }
-	$(BIN) release build --config release/components.yaml --version $(VERSION) --image $(IMAGE) --out dist/release --helm $(HELM)
+	$(BIN) release build --config release/components.yaml --version $(VERSION) --image $(IMAGE) --out dist/release --helm $(HELM) --cache-dir dist/cache
