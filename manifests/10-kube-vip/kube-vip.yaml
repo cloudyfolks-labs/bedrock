@@ -59,6 +59,9 @@ spec:
     spec:
       serviceAccountName: kube-vip
       hostNetwork: true
+      hostAliases:
+        - ip: 127.0.0.1
+          hostnames: [kubernetes]
       priorityClassName: system-node-critical
       nodeSelector:
         bedrock.cloudyfolks.io/role-control-plane: "true"
