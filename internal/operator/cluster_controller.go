@@ -69,9 +69,11 @@ func (r *ClusterReconciler) install(ctx context.Context, generation int64) error
 		return err
 	}
 	report := func(group release.Group, groupErr error) {
-		_ = r.writeStatus(ctx, func(s *v1alpha1.ClusterStatus) {
+		if err := r.writeStatus(ctx, func(s *v1alpha1.ClusterStatus) {
 			s.Components = append(s.Components, componentStatus(r.Bundle, group, groupErr))
-		})
+		}); err != nil {
+			ctrl.LoggerFrom(ctx).Error(err, "write component status", "component", group.Name)
+		}
 	}
 	err := release.Install(ctx, r.Client, r.Bundle, r.Gates, r.Interval, r.GroupTimeout, report)
 	if err != nil {
