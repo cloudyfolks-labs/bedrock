@@ -10,6 +10,7 @@ IMAGE ?= ghcr.io/cloudyfolks-labs/bedrock:$(VERSION)
 HELM ?= helm
 CRANE ?= $(shell $(GO) env GOPATH)/bin/crane
 CRANE_VERSION ?= v0.22.1
+RELEASE_CONFIG ?= release/components.yaml
 
 .PHONY: build test lint generate crds envtest-assets e2e-kind e2e-init controller-gen release crane
 
@@ -47,4 +48,4 @@ e2e-init: build release
 
 release: build
 	@command -v $(HELM) >/dev/null || { echo "helm is required"; exit 1; }
-	$(BIN) release build --config release/components.yaml --version $(VERSION) --image $(IMAGE) --out dist/release --helm $(HELM) --cache-dir dist/cache
+	$(BIN) release build --config $(RELEASE_CONFIG) --version $(VERSION) --image $(IMAGE) --out dist/release --helm $(HELM) --cache-dir dist/cache

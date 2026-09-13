@@ -20,7 +20,7 @@ trap cleanup EXIT
 
 kind delete cluster --name "$cluster" >/dev/null 2>&1 || true
 kind create cluster --name "$cluster" --wait 120s
-make release VERSION=dev
+make release VERSION=dev RELEASE_CONFIG=hack/e2e/components-kind.yaml
 docker build -t "$image" -f Containerfile .
 kind load docker-image "$image" --name "$cluster"
 arch=$(docker version --format '{{.Server.Arch}}')
