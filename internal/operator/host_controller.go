@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
+	"github.com/cloudyfolks-labs/bedrock/internal/roles"
 )
 
 type HostReconciler struct {
@@ -22,11 +23,15 @@ type HostReconciler struct {
 
 func (r *HostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var host v1alpha1.Host
-	if err := r.Client.Get(ctx, req.NamespacedName, &host); err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+	err := r.Client.Get(ctx, req.NamespacedName, &host)
+	if errors.IsNotFound(err) {
+		return ctrl.Result{}, r.createHostFromNode(ctx, req.Name)
+	}
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 	var node corev1.Node
-	err := r.Client.Get(ctx, client.ObjectKey{Name: host.Name}, &node)
+	err = r.Client.Get(ctx, client.ObjectKey{Name: host.Name}, &node)
 	if errors.IsNotFound(err) {
 		next := hostStatus(host, nil, metav1.ConditionFalse, "NodeMissing", "no Node with this name")
 		return ctrl.Result{}, r.updateStatus(ctx, host, next)
@@ -42,6 +47,19 @@ func (r *HostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 	next := hostStatus(host, &node, metav1.ConditionTrue, "RolesApplied", "")
 	return ctrl.Result{}, r.updateStatus(ctx, host, next)
+}
+
+func (r *HostReconciler) createHostFromNode(ctx context.Context, name string) error {
+	var node corev1.Node
+	if err := r.Client.Get(ctx, client.ObjectKey{Name: name}, &node); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	nodeRoles := roles.FromLabels(node.Labels)
+	if len(nodeRoles) == 0 {
+		return nil
+	}
+	host := &v1alpha1.Host{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{v1alpha1.LabelKind: "Host", v1alpha1.LabelName: name}}, Spec: v1alpha1.HostSpec{Roles: nodeRoles}}
+	return client.IgnoreAlreadyExists(r.Client.Create(ctx, host))
 }
 
 func (r *HostReconciler) updateStatus(ctx context.Context, host v1alpha1.Host, next v1alpha1.HostStatus) error {
