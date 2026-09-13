@@ -6,44 +6,16 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
+	"github.com/cloudyfolks-labs/bedrock/internal/roles"
 )
 
-const (
-	labelRolePrefix = "bedrock.cloudyfolks.io/role-"
-	labelFabricGW   = "fabric.cloudyfolks.io/external-gw"
-	labelFabricRole = "fabric/role"
-	taintNoWorkload = "bedrock.cloudyfolks.io/no-workload"
-)
+func managedLabelKeys() []string { return roles.ManagedLabelKeys() }
 
-func managedLabelKeys() []string {
-	keys := []string{labelFabricGW, labelFabricRole}
-	for _, role := range v1alpha1.AllRoles() {
-		keys = append(keys, labelRolePrefix+role)
-	}
-	return keys
-}
+func RoleLabels(names []string) map[string]string { return roles.Labels(names) }
 
-func RoleLabels(roles []string) map[string]string {
-	labels := map[string]string{}
-	for _, role := range roles {
-		labels[labelRolePrefix+role] = "true"
-	}
-	if slices.Contains(roles, v1alpha1.RoleFabricGateway) {
-		labels[labelFabricGW] = "true"
-		labels[labelFabricRole] = "master"
-	}
-	return labels
-}
+func RoleTaints(names []string) []corev1.Taint { return roles.Taints(names) }
 
-func RoleTaints(roles []string) []corev1.Taint {
-	if slices.Contains(roles, v1alpha1.RoleWorkload) {
-		return nil
-	}
-	return []corev1.Taint{{Key: taintNoWorkload, Effect: corev1.TaintEffectNoSchedule}}
-}
-
-func ApplyRoles(node *corev1.Node, roles []string) bool {
+func ApplyRoles(node *corev1.Node, roleNames []string) bool {
 	desiredLabels := maps.Clone(node.Labels)
 	if desiredLabels == nil {
 		desiredLabels = map[string]string{}
@@ -51,10 +23,10 @@ func ApplyRoles(node *corev1.Node, roles []string) bool {
 	for _, key := range managedLabelKeys() {
 		delete(desiredLabels, key)
 	}
-	maps.Copy(desiredLabels, RoleLabels(roles))
+	maps.Copy(desiredLabels, RoleLabels(roleNames))
 
-	desiredTaints := slices.DeleteFunc(slices.Clone(node.Spec.Taints), func(t corev1.Taint) bool { return t.Key == taintNoWorkload })
-	desiredTaints = append(desiredTaints, RoleTaints(roles)...)
+	desiredTaints := slices.DeleteFunc(slices.Clone(node.Spec.Taints), func(t corev1.Taint) bool { return t.Key == roles.NoWorkloadTaint })
+	desiredTaints = append(desiredTaints, RoleTaints(roleNames)...)
 
 	changed := !maps.Equal(node.Labels, desiredLabels) || !taintsEqual(node.Spec.Taints, desiredTaints)
 	node.Labels = desiredLabels
