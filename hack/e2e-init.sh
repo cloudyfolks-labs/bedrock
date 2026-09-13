@@ -67,5 +67,5 @@ kubectl get host "$(hostname | tr '[:upper:]' '[:lower:]')" -o jsonpath='{.spec.
 kubectl get setting storage.replicas -o jsonpath='{.spec.value}' | grep -qx 1
 token=$(bin/bedrock token create --roles workload --expiry 10m)
 test -n "$token"
-echo "$token" | base64 -d 2>/dev/null | grep -q '"k0sToken"' || echo "$token" | python3 -c 'import base64,json,sys; t=sys.stdin.read().strip(); t+="="*(-len(t)%4); json.loads(base64.urlsafe_b64decode(t))["k0sToken"]'
+echo "$token" | python3 -c 'import base64,json,sys; t=sys.stdin.read().strip(); t+="="*(-len(t)%4); json.loads(base64.urlsafe_b64decode(t))["k0sToken"]'
 echo "e2e-init passed"
