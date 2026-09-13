@@ -100,6 +100,19 @@ func TestApplyThenPrune(t *testing.T) {
 	}
 }
 
+func TestPruneIgnoresVanishedAPI(t *testing.T) {
+	c, _ := startTestEnv(t)
+	ctx := context.Background()
+	if err := c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: SystemNamespace}}); err != nil {
+		t.Fatal(err)
+	}
+	applier := Applier{Client: c}
+	previous := Inventory{ObjectRef{APIVersion: "gone.example.com/v1", Kind: "Ghost", Name: "phantom"}: struct{}{}}
+	if err := applier.Prune(ctx, previous, Inventory{}); err != nil {
+		t.Fatalf("prune must ignore a vanished api group: %v", err)
+	}
+}
+
 func TestInstallAppliesAllGroupsAndPrunes(t *testing.T) {
 	c, _ := startTestEnv(t)
 	ctx := context.Background()

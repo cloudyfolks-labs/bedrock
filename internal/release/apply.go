@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -33,7 +34,7 @@ func (a Applier) Prune(ctx context.Context, previous, current Inventory) error {
 		obj.SetKind(ref.Kind)
 		obj.SetNamespace(ref.Namespace)
 		obj.SetName(ref.Name)
-		if err := a.Client.Delete(ctx, obj); err != nil && !errors.IsNotFound(err) {
+		if err := a.Client.Delete(ctx, obj); err != nil && !errors.IsNotFound(err) && !meta.IsNoMatchError(err) {
 			return fmt.Errorf("prune %s %s/%s: %w", ref.Kind, ref.Namespace, ref.Name, err)
 		}
 	}
