@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bedrock-operator
+  namespace: bedrock-system
+spec:
+  selector:
+    matchLabels:
+      app: bedrock-operator
+  template:
+    metadata:
+      labels:
+        app: bedrock-operator
+    spec:
+      containers:
+        - name: operator
+          image: ghcr.io/cloudyfolks-labs/bedrock:dev

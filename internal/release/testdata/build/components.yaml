@@ -1,0 +1,16 @@
+k0sVersion: v1.36.3+k0s.0
+supportedOS: [ubuntu-24.04]
+upgradeFrom: []
+components:
+  - name: crds
+    order: 0
+  - name: widgets
+    order: 60
+    chart: chart
+    version: 0.1.0
+    namespace: widgets
+    values: values/chart.yaml
+    crdsToGroup: crds
+  - name: bedrock
+    order: 90
+    dirs: [manifests/90-bedrock]

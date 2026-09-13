@@ -14,6 +14,7 @@ func Commands() map[string]Command {
 	return map[string]Command{
 		"version":  versionCommand,
 		"operator": operatorCommand,
+		"release":  releaseCommand,
 	}
 }
 
