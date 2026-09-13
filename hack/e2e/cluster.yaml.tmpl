@@ -1,0 +1,13 @@
+apiVersion: bedrock.cloudyfolks.io/v1alpha1
+kind: ClusterConfig
+metadata:
+  name: e2e
+spec:
+  version: ${VERSION}
+  api:
+    vip: ${VIP}
+  network:
+    managementInterface: ${IFACE}
+  storage:
+    devices: [${DEVICE}]
+  roles: [control-plane, ceph-osd, fabric-gateway, workload]

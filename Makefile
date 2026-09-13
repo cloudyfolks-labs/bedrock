@@ -11,7 +11,7 @@ HELM ?= helm
 CRANE ?= $(shell $(GO) env GOPATH)/bin/crane
 CRANE_VERSION ?= v0.22.1
 
-.PHONY: build test lint generate crds envtest-assets e2e-kind controller-gen release crane
+.PHONY: build test lint generate crds envtest-assets e2e-kind e2e-init controller-gen release crane
 
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X github.com/cloudyfolks-labs/bedrock/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/bedrock
@@ -41,6 +41,9 @@ crane:
 
 e2e-kind: build crds release crane
 	CRANE=$(CRANE) hack/e2e-kind.sh
+
+e2e-init: build release
+	hack/e2e-init.sh
 
 release: build
 	@command -v $(HELM) >/dev/null || { echo "helm is required"; exit 1; }
