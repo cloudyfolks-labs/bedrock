@@ -18,7 +18,7 @@ func TestSettingReconcilerSeedsAndValidates(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: newTestScheme(t), Metrics: metricsDisabled()})
+	mgr, err := ctrl.NewManager(cfg, testManagerOptions(t))
 	if err != nil {
 		t.Fatal(err)
 	}

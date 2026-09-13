@@ -7,7 +7,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -27,6 +30,7 @@ func StartTestEnv(t *testing.T) (client.Client, *rest.Config) {
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "manifests", "00-crds")},
 		ErrorIfCRDPathMissing: true,
 	}
+	env.ControlPlane.GetAPIServer().Configure().Append("disable-admission-plugins", "TaintNodesByCondition")
 	cfg, err := env.Start()
 	if err != nil {
 		t.Fatal(err)
@@ -53,4 +57,13 @@ func newTestScheme(t *testing.T) *runtime.Scheme {
 
 func metricsDisabled() metricsserver.Options {
 	return metricsserver.Options{BindAddress: "0"}
+}
+
+func testManagerOptions(t *testing.T) ctrl.Options {
+	t.Helper()
+	return ctrl.Options{
+		Scheme:     newTestScheme(t),
+		Metrics:    metricsDisabled(),
+		Controller: config.Controller{SkipNameValidation: ptr.To(true)},
+	}
 }
