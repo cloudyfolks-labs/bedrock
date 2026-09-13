@@ -12,5 +12,5 @@ grep -q 'kind: CustomResourceDefinition' "$dir/manifests/00-crds/cert-manager-cr
 grep -q 'name: cert-manager' "$dir/manifests/60-cert-manager/cert-manager.yaml"
 grep -q 'metrics-server' "$dir/manifests/70-monitoring/monitoring.yaml"
 grep -q 'name: bedrock-operator' "$dir/manifests/90-bedrock/bedrock.yaml"
-! grep -rq 'ghcr.io/cloudyfolks-labs/bedrock:dev' "$dir/manifests" || test "$(grep -o 'version: .*' "$dir/release.yaml" | head -1)" = "version: dev"
+! grep -rq 'ghcr.io/cloudyfolks-labs/bedrock:dev' "$dir/manifests" || test "$(grep '^version:' "$dir/release.yaml")" = "version: dev"
 echo "check-release passed"
