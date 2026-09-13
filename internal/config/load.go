@@ -14,6 +14,12 @@ import (
 	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
 )
 
+const (
+	defaultPodCIDR     = "10.16.0.0/16"
+	defaultServiceCIDR = "10.96.0.0/12"
+	defaultJoinCIDR    = "100.64.0.0/16"
+)
+
 func Load(path string) (v1alpha1.ClusterConfig, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -34,9 +40,9 @@ func WithDefaults(cfg v1alpha1.ClusterConfig) v1alpha1.ClusterConfig {
 	out := *cfg.DeepCopy()
 	out.Spec.API.VIPMode = fallback(out.Spec.API.VIPMode, "arp")
 	out.Spec.Platform.TLSMode = fallback(out.Spec.Platform.TLSMode, "SelfSigned")
-	out.Spec.Network.Fabric.PodCIDR = fallback(out.Spec.Network.Fabric.PodCIDR, "10.16.0.0/16")
-	out.Spec.Network.Fabric.ServiceCIDR = fallback(out.Spec.Network.Fabric.ServiceCIDR, "10.96.0.0/12")
-	out.Spec.Network.Fabric.JoinCIDR = fallback(out.Spec.Network.Fabric.JoinCIDR, "100.64.0.0/16")
+	out.Spec.Network.Fabric.PodCIDR = fallback(out.Spec.Network.Fabric.PodCIDR, defaultPodCIDR)
+	out.Spec.Network.Fabric.ServiceCIDR = fallback(out.Spec.Network.Fabric.ServiceCIDR, defaultServiceCIDR)
+	out.Spec.Network.Fabric.JoinCIDR = fallback(out.Spec.Network.Fabric.JoinCIDR, defaultJoinCIDR)
 	out.Spec.Network.Fabric.EIPMode = fallback(out.Spec.Network.Fabric.EIPMode, "l2")
 	if out.Spec.Storage.Replicas == 0 {
 		out.Spec.Storage.Replicas = 1
@@ -84,6 +90,9 @@ func Validate(cfg v1alpha1.ClusterConfig) error {
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
 			return fmt.Errorf("spec.network.fabric cidr %q: %w", cidr, err)
 		}
+	}
+	if s.Network.Fabric.PodCIDR != defaultPodCIDR || s.Network.Fabric.ServiceCIDR != defaultServiceCIDR || s.Network.Fabric.JoinCIDR != defaultJoinCIDR {
+		return fmt.Errorf("custom CIDRs arrive in a later release")
 	}
 	if !slices.Contains([]string{"bgp", "l2"}, s.Network.Fabric.EIPMode) {
 		return fmt.Errorf("spec.network.fabric.eipMode must be bgp or l2")

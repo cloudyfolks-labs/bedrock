@@ -1,0 +1,16 @@
+crds:
+  enabled: true
+frr:
+  enabled: false
+networking:
+  pods:
+    cidr:
+      v4: 10.16.0.0/16
+  services:
+    cidr:
+      v4: 10.96.0.0/12
+  join:
+    cidr:
+      v4: 100.64.0.0/16
+masterNodesLabels:
+  fabric/role: master

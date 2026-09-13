@@ -17,6 +17,16 @@ components:
   - name: crds
     order: 0
     dirs: [manifests/00-crds]
+  - name: kube-vip
+    order: 10
+    dirs: [manifests/10-kube-vip]
+  - name: fabric
+    order: 20
+    chart: charts/fabric
+    version: 1.2.1
+    namespace: kube-system
+    values: release/values/fabric.yaml
+    crdsToGroup: crds
   - name: cert-manager
     order: 60
     chart: charts/cert-manager
