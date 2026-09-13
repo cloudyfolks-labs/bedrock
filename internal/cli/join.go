@@ -101,8 +101,11 @@ func RunJoin(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	defer os.Remove(tokenPath)
 
 	controlPlane := hasRole(nodeRoles, v1alpha1.RoleControlPlane)
-	opts := k0s.InstallOptions{Role: "worker", TokenFile: tokenPath, Labels: roles.Labels(nodeRoles), DataDir: o.dataDir}
+	opts := k0s.InstallOptions{Role: "worker", TokenFile: tokenPath, Labels: roles.Labels(nodeRoles), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: o.dataDir}
 	if controlPlane {
+		if len(token.K0sConfig) == 0 {
+			return fail(stderr, fmt.Errorf("join: token has no k0s config for a control-plane join"))
+		}
 		configPath := filepath.Join(deps.Root, "etc", "k0s", "k0s.yaml")
 		if err := os.WriteFile(configPath, token.K0sConfig, 0o600); err != nil {
 			return fail(stderr, err)

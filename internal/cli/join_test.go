@@ -47,7 +47,7 @@ func TestRunJoinInstallsWhenNotRunning(t *testing.T) {
 	dataDir := filepath.Join(root, "var", "lib", "k0s")
 	e.Errors["/usr/local/bin/k0s status --data-dir "+dataDir] = &host.ExitError{Code: 1}
 	tokenPath := filepath.Join(root, "etc", "k0s", "join-token")
-	installArgs := k0s.InstallArgs(k0s.InstallOptions{Role: "worker", Force: true, TokenFile: tokenPath, Labels: roles.Labels([]string{"workload"}), DataDir: dataDir})
+	installArgs := k0s.InstallArgs(k0s.InstallOptions{Role: "worker", Force: true, TokenFile: tokenPath, Labels: roles.Labels([]string{"workload"}), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: dataDir})
 	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
 	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
 	var out, errOut bytes.Buffer
@@ -80,6 +80,32 @@ func controlPlaneJoinToken(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return token
+}
+
+func TestRunJoinRejectsControlPlaneWithoutConfig(t *testing.T) {
+	root, e := fakeHost(t)
+	dataDir := filepath.Join(root, "var", "lib", "k0s")
+	token, err := k0s.EncodeToken(k0s.Token{
+		Version: "v0.1.0-test", Roles: []string{"control-plane"}, K0sToken: "tok",
+		VIP: "10.0.10.10", K0sVersion: "1.36.3+k0s.0", SupportedOS: []string{"ubuntu-24.04"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
+	var out, errOut bytes.Buffer
+	code := RunJoin(context.Background(), []string{"--token", token, "--data-dir", dataDir, "--k0s-bin", "/usr/local/bin/k0s"}, deps, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out.String(), errOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "etc", "k0s", "k0s.yaml")); !os.IsNotExist(err) {
+		t.Fatal("k0s.yaml must not be written without a k0s config")
+	}
+	for _, call := range e.Calls {
+		if strings.Contains(call, "k0s install") {
+			t.Fatal("k0s must not be installed without a k0s config")
+		}
+	}
 }
 
 func TestRunJoinControlPlaneEnablesWorkerWithoutWorkloadRole(t *testing.T) {
