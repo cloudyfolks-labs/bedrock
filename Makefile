@@ -12,8 +12,9 @@ CRANE ?= $(shell $(GO) env GOPATH)/bin/crane
 CRANE_VERSION ?= v0.22.1
 RELEASE_CONFIG ?= release/components.yaml
 PIN_DIGESTS ?=
+BUNDLE_ARCH ?= amd64
 
-.PHONY: build test lint generate crds envtest-assets e2e-kind e2e-init controller-gen release crane
+.PHONY: build test lint generate crds envtest-assets e2e-kind e2e-init controller-gen release crane bundle
 
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X github.com/cloudyfolks-labs/bedrock/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/bedrock
@@ -50,3 +51,6 @@ e2e-init: build release
 release: build
 	@command -v $(HELM) >/dev/null || { echo "helm is required"; exit 1; }
 	$(BIN) release build --config $(RELEASE_CONFIG) --version $(VERSION) --image $(IMAGE) --out dist/release --helm $(HELM) --cache-dir dist/cache $(if $(PIN_DIGESTS),--pin-digests,)
+
+bundle: build release
+	$(BIN) bundle build --release dist/release --arch $(BUNDLE_ARCH) --out dist/bedrock-$(VERSION)-bundle-$(BUNDLE_ARCH).tar.zst --cache-dir dist/cache

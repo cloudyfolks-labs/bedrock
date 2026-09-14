@@ -1,0 +1,160 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/cloudyfolks-labs/bedrock/internal/host"
+	"github.com/cloudyfolks-labs/bedrock/internal/release"
+)
+
+func writeBundleRelease(t *testing.T, dir, k0sSum string) {
+	t.Helper()
+	os.MkdirAll(filepath.Join(dir, "manifests", "00-crds"), 0o755)
+	os.WriteFile(filepath.Join(dir, "release.yaml"), []byte("version: v0.1.0\nimage: ghcr.io/cloudyfolks-labs/bedrock:v0.1.0\nk0sVersion: v1.36.3+k0s.0\nk0sChecksums:\n  amd64: "+k0sSum+"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "images.txt"), []byte("quay.io/a/b:1\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "manifests", "00-crds", "a.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n  namespace: default\n"), 0o644)
+}
+
+func TestRunBundleBuildProducesArchive(t *testing.T) {
+	cache := t.TempDir()
+	k0sContent := []byte("k0s")
+	sum := sha256.Sum256(k0sContent)
+	k0sPath := filepath.Join(cache, "k0s", "v1.36.3+k0s.0", "amd64")
+	os.MkdirAll(filepath.Dir(k0sPath), 0o755)
+	os.WriteFile(k0sPath, k0sContent, 0o755)
+	releaseDir := t.TempDir()
+	writeBundleRelease(t, releaseDir, "sha256:"+hex.EncodeToString(sum[:]))
+	airgap := filepath.Join(t.TempDir(), "airgap.tar")
+	os.WriteFile(airgap, []byte("airgap"), 0o644)
+	deps := BundleDeps{
+		Pull: func(_ context.Context, ref, dest string) (string, error) {
+			return "sha256:" + strings.Repeat("f", 64), os.WriteFile(dest, []byte(ref), 0o644)
+		},
+		Airgap: func(_ context.Context, _, _, _, _ string) (string, error) { return airgap, nil },
+	}
+	out := filepath.Join(t.TempDir(), "bedrock-v0.1.0-bundle-amd64.tar.zst")
+	var stdout, stderr bytes.Buffer
+	code := RunBundleBuild(context.Background(), bundleBuildOptions{releaseDir: releaseDir, arch: "amd64", out: out, cacheDir: cache, k0sBaseURL: ""}, deps, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	spec, err := release.OpenBundle(out, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Version != "v0.1.0" || len(spec.Images) != 2 {
+		t.Fatalf("spec %+v", spec)
+	}
+	if !strings.Contains(stdout.String(), out) {
+		t.Fatalf("stdout %q", stdout.String())
+	}
+}
+
+func TestBundleAssetName(t *testing.T) {
+	if got := BundleAssetName("v0.1.0", "amd64"); got != "bedrock-v0.1.0-bundle-amd64.tar.zst" {
+		t.Fatal(got)
+	}
+}
+
+func TestVerifySums(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644)
+	sum := sha256.Sum256([]byte("hello"))
+	text := hex.EncodeToString(sum[:]) + "  a.txt\n"
+	if err := VerifySums(text, dir, []string{"a.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifySums(strings.Repeat("0", 64)+"  a.txt\n", dir, []string{"a.txt"}); err == nil {
+		t.Fatal("expected mismatch")
+	}
+	if err := VerifySums(text, dir, []string{"b.txt"}); err == nil {
+		t.Fatal("expected missing entry error")
+	}
+}
+
+func bundleServer(t *testing.T, version string, bundle []byte, sums string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	base := "/" + version + "/"
+	mux.HandleFunc(base+"SHA256SUMS", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sums)) })
+	mux.HandleFunc(base+"SHA256SUMS.sigstore.json", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("{}")) })
+	mux.HandleFunc(base+BundleAssetName(version, "amd64"), func(w http.ResponseWriter, r *http.Request) { w.Write(bundle) })
+	return httptest.NewServer(mux)
+}
+
+func TestRunBundlePullVerifiesWithCosign(t *testing.T) {
+	bundle := []byte("bundle-bytes")
+	sum := sha256.Sum256(bundle)
+	sums := hex.EncodeToString(sum[:]) + "  " + BundleAssetName("v0.1.0", "amd64") + "\n"
+	server := bundleServer(t, "v0.1.0", bundle, sums)
+	defer server.Close()
+	out := t.TempDir()
+	exec := &host.FakeExec{ResponsePrefixes: map[string]string{"cosign verify-blob": ""}}
+	deps := BundleDeps{Exec: exec, LookPath: func(string) (string, error) { return "/usr/bin/cosign", nil }}
+	var stdout, stderr bytes.Buffer
+	code := RunBundlePull(context.Background(), bundlePullOptions{version: "v0.1.0", out: out, arch: "amd64", baseURL: server.URL}, deps, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	got, _ := os.ReadFile(filepath.Join(out, BundleAssetName("v0.1.0", "amd64")))
+	if string(got) != "bundle-bytes" {
+		t.Fatalf("bundle content %q", got)
+	}
+	if len(exec.Calls) != 1 || !strings.HasPrefix(exec.Calls[0], "cosign verify-blob --bundle "+filepath.Join(out, "SHA256SUMS.sigstore.json")) || !strings.Contains(exec.Calls[0], "refs/tags/"+regexp.QuoteMeta("v0.1.0")) {
+		t.Fatalf("cosign call %v", exec.Calls)
+	}
+}
+
+func TestRunBundlePullWarnsWithoutCosign(t *testing.T) {
+	bundle := []byte("b")
+	sum := sha256.Sum256(bundle)
+	server := bundleServer(t, "v0.1.0", bundle, hex.EncodeToString(sum[:])+"  "+BundleAssetName("v0.1.0", "amd64")+"\n")
+	defer server.Close()
+	deps := BundleDeps{Exec: &host.FakeExec{}, LookPath: func(string) (string, error) { return "", errors.New("not found") }}
+	var stdout, stderr bytes.Buffer
+	if code := RunBundlePull(context.Background(), bundlePullOptions{version: "v0.1.0", out: t.TempDir(), arch: "amd64", baseURL: server.URL}, deps, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "cosign not found") {
+		t.Fatalf("stderr %q", stderr.String())
+	}
+}
+
+func TestRunBundlePullRejectsBadChecksum(t *testing.T) {
+	server := bundleServer(t, "v0.1.0", []byte("b"), strings.Repeat("0", 64)+"  "+BundleAssetName("v0.1.0", "amd64")+"\n")
+	defer server.Close()
+	out := t.TempDir()
+	deps := BundleDeps{Exec: &host.FakeExec{}, LookPath: func(string) (string, error) { return "", errors.New("not found") }}
+	var stdout, stderr bytes.Buffer
+	if code := RunBundlePull(context.Background(), bundlePullOptions{version: "v0.1.0", out: out, arch: "amd64", baseURL: server.URL}, deps, &stdout, &stderr); code == 0 {
+		t.Fatal("expected failure")
+	}
+	if _, err := os.Stat(filepath.Join(out, BundleAssetName("v0.1.0", "amd64"))); !os.IsNotExist(err) {
+		t.Fatal("bad bundle must be removed")
+	}
+}
+
+func TestRunBundlePullFailsCosignVerification(t *testing.T) {
+	bundle := []byte("b")
+	sum := sha256.Sum256(bundle)
+	server := bundleServer(t, "v0.1.0", bundle, hex.EncodeToString(sum[:])+"  "+BundleAssetName("v0.1.0", "amd64")+"\n")
+	defer server.Close()
+	exec := &host.FakeExec{Errors: map[string]error{}}
+	exec.ErrorPrefixes = map[string]error{"cosign verify-blob": &host.ExitError{Code: 1}}
+	deps := BundleDeps{Exec: exec, LookPath: func(string) (string, error) { return "/usr/bin/cosign", nil }}
+	var stdout, stderr bytes.Buffer
+	if code := RunBundlePull(context.Background(), bundlePullOptions{version: "v0.1.0", out: t.TempDir(), arch: "amd64", baseURL: server.URL}, deps, &stdout, &stderr); code == 0 {
+		t.Fatal("expected failure when cosign rejects")
+	}
+}
