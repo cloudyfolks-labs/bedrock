@@ -84,7 +84,7 @@ kubectl -n kube-system rollout status daemonset/kube-vip --timeout=120s
 kubectl get cluster cluster -o jsonpath='{.status.version}' | grep -qx "$version"
 kubectl wait --for=condition=Available cluster/cluster --timeout=120s
 if [ "$image" = "localhost:5000/bedrock:dev" ]; then
-  kubectl -n bedrock-system get pods -o jsonpath='{.items[*].spec.containers[*].image}' | tr ' ' '\n' | grep -q localhost:5000/bedrock:dev
+  test "$(kubectl -n bedrock-system get deploy/bedrock-operator -o jsonpath='{.spec.template.spec.containers[0].image}')" = "$image"
 fi
 kubectl -n cert-manager rollout status deployment/cert-manager --timeout=300s
 kubectl get host "$(hostname | tr '[:upper:]' '[:lower:]')" -o jsonpath='{.spec.roles}' | grep -q ceph-osd
