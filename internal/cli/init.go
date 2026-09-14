@@ -49,6 +49,9 @@ type initOptions struct {
 	k0sBin     string
 	k0sBaseURL string
 	timeout    time.Duration
+	bundle     string
+	workDir    string
+	bundleDir  string
 }
 
 func parseInitFlags(args []string, stderr io.Writer) (initOptions, error) {
@@ -62,6 +65,8 @@ func parseInitFlags(args []string, stderr io.Writer) (initOptions, error) {
 	flags.StringVar(&o.dataDir, "data-dir", "/var/lib/k0s", "k0s data directory")
 	flags.StringVar(&o.k0sBin, "k0s-bin", "/usr/local/bin/k0s", "k0s binary path")
 	flags.StringVar(&o.k0sBaseURL, "k0s-base-url", release.DefaultK0sBaseURL, "k0s download base url")
+	flags.StringVar(&o.bundle, "bundle", "", "install from this bundle archive")
+	flags.StringVar(&o.workDir, "work-dir", "/var/lib/bedrock", "directory for extracted bundles")
 	flags.DurationVar(&o.timeout, "timeout", 30*time.Minute, "overall timeout")
 	if err := flags.Parse(args); err != nil {
 		return o, err
@@ -104,6 +109,21 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		return fail(stderr, err)
 	}
 
+	bundlePath := o.bundle
+	if bundlePath == "" {
+		bundlePath = cfg.Spec.Registry.Bundle
+	}
+	bundleDir, err := openBundle(o, cfg.Spec.Registry.Bundle)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if bundleDir != "" {
+		o.releaseDir = filepath.Join(bundleDir, "release")
+		o.imagesDir = filepath.Join(bundleDir, "images")
+		o.bundleDir = bundleDir
+		step(stdout, "bundle %s", bundlePath)
+	}
+
 	step(stdout, "loading release")
 	bundle, cleanupBundle, err := loadBundle(ctx, o, deps)
 	defer cleanupBundle()
@@ -141,6 +161,13 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	}
 	if err := host.EnsureVIPUnit(ctx, deps.Exec, deps.Root, cfg.Spec.API.VIP, cfg.Spec.Network.ManagementInterface); err != nil {
 		return fail(stderr, err)
+	}
+
+	if mirror := cfg.Spec.Registry.Mirror; mirror != "" {
+		step(stdout, "registry mirror %s", mirror)
+		if err := host.EnsureMirror(deps.Root, mirror); err != nil {
+			return fail(stderr, err)
+		}
 	}
 
 	step(stdout, "writing k0s.yaml")
@@ -270,7 +297,46 @@ func ensureK0s(ctx context.Context, k0sClient k0s.Client, o initOptions, bundle 
 	if !ok {
 		return fmt.Errorf("release has no k0s checksum for %s", arch)
 	}
+	if o.bundleDir != "" {
+		return installK0sFromBundle(filepath.Join(o.bundleDir, "k0s", "k0s"), o.k0sBin, sum)
+	}
 	return k0s.Download(ctx, release.K0sBinaryURL(o.k0sBaseURL, bundle.Spec.K0sVersion, arch), o.k0sBin, sum)
+}
+
+func installK0sFromBundle(src, bin, wantSum string) error {
+	got, err := release.FileSHA256(src)
+	if err != nil {
+		return fmt.Errorf("bundle k0s: %w", err)
+	}
+	if got != wantSum {
+		return fmt.Errorf("bundle k0s: checksum mismatch")
+	}
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(bin, data, 0o755)
+}
+
+func openBundle(o initOptions, configured string) (string, error) {
+	path := o.bundle
+	if path == "" {
+		path = configured
+	}
+	if path == "" {
+		return "", nil
+	}
+	dir := filepath.Join(o.workDir, "bundle")
+	if err := os.RemoveAll(dir); err != nil {
+		return "", err
+	}
+	if _, err := release.OpenBundle(path, dir); err != nil {
+		return "", fmt.Errorf("bundle %s: %w", path, err)
+	}
+	return dir, nil
 }
 
 func writeK0sConfig(path string, cfg v1alpha1.ClusterConfig) error {

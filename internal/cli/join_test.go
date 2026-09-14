@@ -150,6 +150,56 @@ func TestRunJoinControlPlaneEnablesWorkerWithoutWorkloadRole(t *testing.T) {
 	}
 }
 
+func TestRunJoinFromBundle(t *testing.T) {
+	root, e := fakeHost(t)
+	dataDir := filepath.Join(root, "var", "lib", "k0s")
+	workDir := filepath.Join(root, "var", "lib", "bedrock")
+	k0sBin := filepath.Join(root, "usr", "local", "bin", "k0s")
+	bundlePath, sum := buildFixtureBundle(t, "v0.1.0-test", "v1.99.0+k0s.0")
+	e.Errors[k0sBin+" status --data-dir "+dataDir] = &host.ExitError{Code: 1}
+	tokenPath := filepath.Join(root, "etc", "k0s", "join-token")
+	installArgs := k0s.InstallArgs(k0s.InstallOptions{Role: "worker", Force: true, TokenFile: tokenPath, Labels: roles.Labels([]string{"workload"}), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: dataDir})
+	e.Responses[k0sBin+" "+strings.Join(installArgs, " ")] = ""
+	e.Responses[k0sBin+" start"] = ""
+	token, err := k0s.EncodeToken(k0s.Token{
+		Version: "v0.1.0-test", Roles: []string{"workload"}, K0sToken: "tok",
+		VIP: "10.0.10.10", K0sVersion: "v1.99.0+k0s.0", K0sChecksums: map[string]string{fixtureArch: sum},
+		SupportedOS: []string{"ubuntu-24.04"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
+	var out, errOut bytes.Buffer
+	code := RunJoin(context.Background(), []string{"--token", token, "--data-dir", dataDir, "--k0s-bin", k0sBin, "--bundle", bundlePath, "--work-dir", workDir}, deps, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out.String(), errOut.String())
+	}
+	got, err := os.ReadFile(k0sBin)
+	if err != nil {
+		t.Fatalf("k0s binary not installed from bundle: %v", err)
+	}
+	if string(got) != fakeK0sContent {
+		t.Fatalf("k0s binary content %q, want %q", got, fakeK0sContent)
+	}
+	entries, err := os.ReadDir(filepath.Join(dataDir, "images"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tars, airgap := 0, false
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".tar") {
+			tars++
+		}
+		if entry.Name() == "k0s-airgap.tar" {
+			airgap = true
+		}
+	}
+	if tars != 3 || !airgap {
+		t.Fatalf("images dir entries %v", entries)
+	}
+}
+
 func TestRunJoinSkipsInstallWhenAlreadyRunning(t *testing.T) {
 	root, e := fakeHost(t)
 	dataDir := filepath.Join(root, "var", "lib", "k0s")

@@ -3,9 +3,11 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +22,7 @@ import (
 	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
 	"github.com/cloudyfolks-labs/bedrock/internal/host"
 	"github.com/cloudyfolks-labs/bedrock/internal/k0s"
+	"github.com/cloudyfolks-labs/bedrock/internal/release"
 	"github.com/cloudyfolks-labs/bedrock/internal/roles"
 )
 
@@ -35,6 +38,23 @@ spec:
     managementInterface: bond0.10
   storage:
     devices: [/dev/sdb]
+  roles: [control-plane, ceph-osd, fabric-gateway]
+`
+
+const initConfigWithMirror = `apiVersion: bedrock.cloudyfolks.io/v1alpha1
+kind: ClusterConfig
+metadata:
+  name: lab
+spec:
+  version: v0.1.0-test
+  api:
+    vip: 10.0.10.10
+  network:
+    managementInterface: bond0.10
+  storage:
+    devices: [/dev/sdb]
+  registry:
+    mirror: https://mirror.example.com
   roles: [control-plane, ceph-osd, fabric-gateway]
 `
 
@@ -330,5 +350,206 @@ func TestRunInitBlockedByPreflight(t *testing.T) {
 		if bytes.Contains([]byte(call), []byte("k0s install")) {
 			t.Fatal("k0s must not be installed when preflight blocks")
 		}
+	}
+}
+
+const fakeK0sContent = "fake-k0s-binary-content"
+
+var fixtureArch = goruntime.GOARCH
+
+func buildFixtureBundle(t *testing.T, version, k0sVersion string) (path, checksum string) {
+	t.Helper()
+	releaseDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(releaseDir, "manifests", "00-crds"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	k0sSrc := filepath.Join(t.TempDir(), "k0s-src")
+	if err := os.WriteFile(k0sSrc, []byte(fakeK0sContent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := release.FileSHA256(k0sSrc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseYAML := fmt.Sprintf("version: %s\nimage: ghcr.io/cloudyfolks-labs/bedrock:%s\nk0sVersion: %s\nk0sChecksums:\n  %s: %s\nsupportedOS:\n  - ubuntu-24.04\n", version, version, k0sVersion, fixtureArch, sum)
+	if err := os.WriteFile(filepath.Join(releaseDir, "release.yaml"), []byte(releaseYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(releaseDir, "images.txt"), []byte("quay.io/a/b@sha256:"+strings.Repeat("1", 64)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(releaseDir, "manifests", "00-crds", "a.yaml"), []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n  namespace: default\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	airgap := filepath.Join(t.TempDir(), "airgap.tar")
+	if err := os.WriteFile(airgap, []byte("airgap"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pull := func(_ context.Context, ref, dest string) (string, error) {
+		return "sha256:" + strings.Repeat("e", 64), os.WriteFile(dest, []byte("layout:"+ref), 0o644)
+	}
+	work := t.TempDir()
+	if _, err := release.BuildBundle(context.Background(), release.BundleInputs{ReleaseDir: releaseDir, Arch: fixtureArch, K0sBinary: k0sSrc, K0sAirgap: airgap, Pull: pull}, work); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	if err := release.PackBundle(work, out); err != nil {
+		t.Fatal(err)
+	}
+	return out, sum
+}
+
+func TestRunInitFromBundle(t *testing.T) {
+	c, newClient := startEnv(t)
+	root, e := fakeHost(t)
+	configPath := filepath.Join(root, "cluster.yaml")
+	if err := os.WriteFile(configPath, []byte(initConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := client.IgnoreAlreadyExists(c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}})); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "bedrock-system"}})
+	master := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", Labels: map[string]string{"fabric/role": "master"}}}
+	if err := c.Create(ctx, master); err != nil {
+		t.Fatal(err)
+	}
+	master.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.10.11"}}
+	if err := c.Status().Update(ctx, master); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			var cluster v1alpha1.Cluster
+			if err := c.Get(ctx, client.ObjectKey{Name: v1alpha1.ClusterName}, &cluster); err == nil && cluster.Status.Version == "" {
+				cluster.Status.Version = "v0.1.0-test"
+				_ = c.Status().Update(ctx, &cluster)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
+	bundlePath, _ := buildFixtureBundle(t, "v0.1.0-test", "v1.99.0+k0s.0")
+	dataDir := filepath.Join(root, "var", "lib", "k0s")
+	workDir := filepath.Join(root, "var", "lib", "bedrock")
+	k0sBin := filepath.Join(root, "usr", "local", "bin", "k0s")
+	k0sConfigPath := filepath.Join(root, "etc", "k0s", "k0s.yaml")
+	installArgs := k0s.InstallArgs(k0s.InstallOptions{
+		Role: "controller", Force: true, ConfigPath: k0sConfigPath, EnableWorker: true, NoTaints: true, DynamicConfig: true,
+		Labels:            roles.Labels([]string{"control-plane", "ceph-osd", "fabric-gateway"}),
+		KubeletExtraArgs:  []string{"--node-status-update-frequency=4s"},
+		DataDir:           dataDir,
+		DisableComponents: k0s.DefaultDisabledComponents,
+	})
+	e.Responses[k0sBin+" "+strings.Join(installArgs, " ")] = ""
+	e.Responses[k0sBin+" start"] = ""
+	e.Responses[k0sBin+" kubectl get --raw=/readyz"] = "ok"
+	e.Errors[k0sBin+" status --data-dir "+dataDir] = &host.ExitError{Code: 1}
+
+	deps := InitDeps{
+		Exec:      e,
+		Uid:       0,
+		FreeBytes: func(string) (uint64, error) { return 100 << 30, nil },
+		Stat:      func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
+		Root:      root,
+		NewClient: newClient,
+	}
+	var out, errOut bytes.Buffer
+	code := RunInit(ctx, []string{"-f", configPath, "--bundle", bundlePath, "--work-dir", workDir, "--k0s-bin", k0sBin, "--data-dir", dataDir, "--timeout", "30s"}, deps, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out.String(), errOut.String())
+	}
+	got, err := os.ReadFile(k0sBin)
+	if err != nil {
+		t.Fatalf("k0s binary not installed from bundle: %v", err)
+	}
+	if string(got) != fakeK0sContent {
+		t.Fatalf("k0s binary content %q, want %q", got, fakeK0sContent)
+	}
+	info, err := os.Stat(k0sBin)
+	if err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("k0s binary mode %v %v", info, err)
+	}
+	entries, err := os.ReadDir(filepath.Join(dataDir, "images"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tars, airgap := 0, false
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".tar") {
+			tars++
+		}
+		if entry.Name() == "k0s-airgap.tar" {
+			airgap = true
+		}
+	}
+	if tars != 3 || !airgap {
+		t.Fatalf("images dir entries %v", entries)
+	}
+}
+
+func TestRunInitWritesMirror(t *testing.T) {
+	c, newClient := startEnv(t)
+	root, e := fakeHost(t)
+	configPath := filepath.Join(root, "cluster.yaml")
+	if err := os.WriteFile(configPath, []byte(initConfigWithMirror), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := client.IgnoreAlreadyExists(c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}})); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "bedrock-system"}})
+	master := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", Labels: map[string]string{"fabric/role": "master"}}}
+	if err := c.Create(ctx, master); err != nil {
+		t.Fatal(err)
+	}
+	master.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.10.11"}}
+	if err := c.Status().Update(ctx, master); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			var cluster v1alpha1.Cluster
+			if err := c.Get(ctx, client.ObjectKey{Name: v1alpha1.ClusterName}, &cluster); err == nil && cluster.Status.Version == "" {
+				cluster.Status.Version = "v0.1.0-test"
+				_ = c.Status().Update(ctx, &cluster)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+	dataDir := filepath.Join(root, "var", "lib", "k0s")
+	k0sConfigPath := filepath.Join(root, "etc", "k0s", "k0s.yaml")
+	installArgs := k0s.InstallArgs(k0s.InstallOptions{
+		Role: "controller", Force: true, ConfigPath: k0sConfigPath, EnableWorker: true, NoTaints: true, DynamicConfig: true,
+		Labels:            roles.Labels([]string{"control-plane", "ceph-osd", "fabric-gateway"}),
+		KubeletExtraArgs:  []string{"--node-status-update-frequency=4s"},
+		DataDir:           dataDir,
+		DisableComponents: k0s.DefaultDisabledComponents,
+	})
+	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
+	e.Errors["/usr/local/bin/k0s status --data-dir "+dataDir] = &host.ExitError{Code: 1}
+	deps := InitDeps{
+		Exec:      e,
+		Uid:       0,
+		FreeBytes: func(string) (uint64, error) { return 100 << 30, nil },
+		Stat:      func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
+		Root:      root,
+		NewClient: newClient,
+	}
+	var out, errOut bytes.Buffer
+	code := RunInit(ctx, []string{"-f", configPath, "--release-dir", filepath.Join("..", "release", "testdata", "good"), "--k0s-bin", "/usr/local/bin/k0s", "--data-dir", dataDir, "--timeout", "30s"}, deps, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out.String(), errOut.String())
+	}
+	hosts, err := os.ReadFile(filepath.Join(root, "etc", "k0s", "containerd.d", "certs.d", "_default", "hosts.toml"))
+	if err != nil {
+		t.Fatalf("mirror hosts.toml not written: %v", err)
+	}
+	if !strings.Contains(string(hosts), `[host."https://mirror.example.com"]`) {
+		t.Fatalf("hosts.toml %q", hosts)
 	}
 }
