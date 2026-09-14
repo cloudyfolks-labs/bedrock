@@ -1,0 +1,90 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - uses: sigstore/cosign-installer@v4
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: make release binaries VERSION=${{ github.ref_name }} PIN_DIGESTS=1
+      - id: image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/cloudyfolks-labs/bedrock:${{ github.ref_name }}
+          build-args: VERSION=${{ github.ref_name }}
+      - run: cosign sign --yes ghcr.io/cloudyfolks-labs/bedrock@${{ steps.image.outputs.digest }}
+      - run: bin/bedrock bundle build --release dist/release --arch amd64 --out dist/bedrock-${{ github.ref_name }}-bundle-amd64.tar.zst
+      - run: cd dist && sha256sum bedrock-${{ github.ref_name }}-linux-amd64 bedrock-${{ github.ref_name }}-linux-arm64 bedrock-${{ github.ref_name }}-bundle-amd64.tar.zst > SHA256SUMS
+      - run: cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: assets
+          path: |
+            dist/bedrock-*
+            dist/SHA256SUMS
+            dist/SHA256SUMS.sigstore.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-dir
+          path: dist/release
+  e2e-bundle:
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v8
+        with:
+          name: assets
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-dir
+          path: dist/release
+      - run: make build VERSION=${{ github.ref_name }}
+      - run: sudo -E env "PATH=$PATH" KUBECONFIG=/var/lib/k0s/pki/admin.conf VERSION=${{ github.ref_name }} BUNDLE=dist/bedrock-${{ github.ref_name }}-bundle-amd64.tar.zst hack/e2e-init.sh
+  publish:
+    runs-on: ubuntu-latest
+    needs: e2e-bundle
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: assets
+          path: dist
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/bedrock-${{ github.ref_name }}-linux-amd64
+            dist/bedrock-${{ github.ref_name }}-linux-arm64
+            dist/bedrock-${{ github.ref_name }}-bundle-amd64.tar.zst
+            dist/SHA256SUMS
+            dist/SHA256SUMS.sigstore.json
+          generate_release_notes: true
+          fail_on_unmatched_files: true

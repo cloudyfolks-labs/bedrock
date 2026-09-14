@@ -14,10 +14,13 @@ RELEASE_CONFIG ?= release/components.yaml
 PIN_DIGESTS ?=
 BUNDLE_ARCH ?= amd64
 
-.PHONY: build test lint generate crds envtest-assets e2e-kind e2e-init e2e-bundle controller-gen release crane bundle
+.PHONY: build test lint generate crds envtest-assets e2e-kind e2e-init e2e-bundle controller-gen release crane bundle binaries
 
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X github.com/cloudyfolks-labs/bedrock/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/bedrock
+
+binaries:
+	for arch in amd64 arm64; do CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath -ldflags "-X github.com/cloudyfolks-labs/bedrock/internal/cli.Version=$(VERSION)" -o dist/bedrock-$(VERSION)-linux-$$arch ./cmd/bedrock; done
 
 test: envtest-assets
 	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GO) test ./... -count=1
