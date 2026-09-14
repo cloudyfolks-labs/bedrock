@@ -14,7 +14,7 @@ RELEASE_CONFIG ?= release/components.yaml
 PIN_DIGESTS ?=
 BUNDLE_ARCH ?= amd64
 
-.PHONY: build test lint generate crds envtest-assets e2e-kind e2e-init controller-gen release crane bundle
+.PHONY: build test lint generate crds envtest-assets e2e-kind e2e-init e2e-bundle controller-gen release crane bundle
 
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X github.com/cloudyfolks-labs/bedrock/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/bedrock
@@ -54,3 +54,6 @@ release: build
 
 bundle: build release
 	$(BIN) bundle build --release dist/release --arch $(BUNDLE_ARCH) --out dist/bedrock-$(VERSION)-bundle-$(BUNDLE_ARCH).tar.zst --cache-dir dist/cache
+
+e2e-bundle: bundle
+	BUNDLE=dist/bedrock-$(VERSION)-bundle-$(BUNDLE_ARCH).tar.zst hack/e2e-init.sh

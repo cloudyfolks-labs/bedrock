@@ -63,13 +63,19 @@ if [ "$vip" = "$nodeip" ]; then vip=$(echo "$nodeip" | awk -F. '{printf "%s.%s.%
 truncate -s 20G "$workdir/osd.img"
 device=$(losetup --find --show "$workdir/osd.img")
 
-mkdir -p "$workdir/preload"
-docker save "$image" -o "$workdir/preload/bedrock.tar"
-
 VERSION=$version VIP=$vip IFACE=$iface DEVICE=$device envsubst < hack/e2e/cluster.yaml.tmpl > "$workdir/cluster.yaml"
 cat "$workdir/cluster.yaml"
 
-bin/bedrock init -f "$workdir/cluster.yaml" --release-dir dist/release --images-dir "$workdir/preload" --timeout 20m
+if [ -n "${BUNDLE:-}" ]; then
+  bin/bedrock init -f "$workdir/cluster.yaml" --bundle "$BUNDLE" --timeout 20m
+  test -f /var/lib/k0s/images/k0s-airgap.tar
+  test "$(ls /var/lib/k0s/images/*.tar | wc -l)" -ge 3
+  sha256sum /usr/local/bin/k0s | awk '{print "sha256:"$1}' | grep -qx "$(awk '/amd64:/ {print $2}' dist/release/release.yaml)"
+else
+  mkdir -p "$workdir/preload"
+  docker save "$image" -o "$workdir/preload/bedrock.tar"
+  bin/bedrock init -f "$workdir/cluster.yaml" --release-dir dist/release --images-dir "$workdir/preload" --timeout 20m
+fi
 
 kubectl get nodes -o wide
 kubectl wait --for=condition=Ready node --all --timeout=300s
@@ -77,6 +83,9 @@ ip -4 addr show dev "$iface" | grep -q "$vip"
 kubectl -n kube-system rollout status daemonset/kube-vip --timeout=120s
 kubectl get cluster cluster -o jsonpath='{.status.version}' | grep -qx "$version"
 kubectl wait --for=condition=Available cluster/cluster --timeout=120s
+if [ "$image" = "localhost:5000/bedrock:dev" ]; then
+  kubectl -n bedrock-system get pods -o jsonpath='{.items[*].spec.containers[*].image}' | tr ' ' '\n' | grep -q localhost:5000/bedrock:dev
+fi
 kubectl -n cert-manager rollout status deployment/cert-manager --timeout=300s
 kubectl get host "$(hostname | tr '[:upper:]' '[:lower:]')" -o jsonpath='{.spec.roles}' | grep -q ceph-osd
 kubectl get setting storage.replicas -o jsonpath='{.spec.value}' | grep -qx 1
