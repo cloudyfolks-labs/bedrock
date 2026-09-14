@@ -102,7 +102,7 @@ func verifyK0sBinary(path, want string) error {
 	if want == "" {
 		return fmt.Errorf("k0s: release has no checksum for this architecture")
 	}
-	got, err := fileSHA256(path)
+	got, err := FileSHA256(path)
 	if err != nil {
 		return fmt.Errorf("k0s: %w", err)
 	}

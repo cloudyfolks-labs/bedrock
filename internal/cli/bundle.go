@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -208,28 +206,15 @@ func VerifySums(sumsText, dir string, files []string) error {
 		if !ok {
 			return fmt.Errorf("%s has no entry for %s", sumsFile, file)
 		}
-		got, err := fileSHA256Hex(filepath.Join(dir, file))
+		got, err := release.FileSHA256(filepath.Join(dir, file))
 		if err != nil {
 			return err
 		}
-		if "sha256:"+got != want {
+		if got != want {
 			return fmt.Errorf("checksum mismatch for %s", file)
 		}
 	}
 	return nil
-}
-
-func fileSHA256Hex(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func downloadTo(ctx context.Context, url, path string) error {

@@ -44,7 +44,7 @@ func K0sAirgapBundle(ctx context.Context, baseURL, version, arch, cacheDir strin
 	if err := ensureDownloaded(ctx, K0sAirgapURL(baseURL, version, arch), path); err != nil {
 		return "", err
 	}
-	got, err := fileSHA256(path)
+	got, err := FileSHA256(path)
 	if err != nil {
 		return "", err
 	}

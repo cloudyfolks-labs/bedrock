@@ -24,7 +24,7 @@ func K0sChecksums(ctx context.Context, baseURL, version string, arches []string,
 		if err := ensureDownloaded(ctx, K0sBinaryURL(baseURL, version, arch), path); err != nil {
 			return nil, fmt.Errorf("k0s %s %s: %w", version, arch, err)
 		}
-		sum, err := fileSHA256(path)
+		sum, err := FileSHA256(path)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +69,7 @@ func ensureDownloaded(ctx context.Context, url, path string) error {
 	return os.Rename(tmp, path)
 }
 
-func fileSHA256(path string) (string, error) {
+func FileSHA256(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err

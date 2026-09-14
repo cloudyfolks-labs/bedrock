@@ -144,7 +144,7 @@ func TestOpenBundleRejectsEscapingPaths(t *testing.T) {
 
 func fileSHA256OrFail(t *testing.T, path string) string {
 	t.Helper()
-	sum, err := fileSHA256(path)
+	sum, err := FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
