@@ -29,7 +29,7 @@ func PreloadImages(srcDir, imagesDir string) (int, error) {
 		if same {
 			continue
 		}
-		if err := copyFile(src, dst); err != nil {
+		if err := CopyFile(src, dst); err != nil {
 			return copied, err
 		}
 		copied++
@@ -52,7 +52,7 @@ func sameSize(a, b string) (bool, error) {
 	return infoA.Size() == infoB.Size(), nil
 }
 
-func copyFile(src, dst string) error {
+func CopyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err

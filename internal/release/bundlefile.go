@@ -133,7 +133,7 @@ func copyFileMode(src, dst string, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	if err := copyFile(src, dst); err != nil {
+	if err := CopyFile(src, dst); err != nil {
 		return err
 	}
 	return os.Chmod(dst, mode)

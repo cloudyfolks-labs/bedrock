@@ -314,11 +314,10 @@ func installK0sFromBundle(src, bin, wantSum string) error {
 	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(src)
-	if err != nil {
+	if err := release.CopyFile(src, bin); err != nil {
 		return err
 	}
-	return os.WriteFile(bin, data, 0o755)
+	return os.Chmod(bin, 0o755)
 }
 
 func openBundle(o initOptions, configured string) (string, error) {
