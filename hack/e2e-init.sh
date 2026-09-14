@@ -67,6 +67,9 @@ VERSION=$version VIP=$vip IFACE=$iface DEVICE=$device envsubst < hack/e2e/cluste
 cat "$workdir/cluster.yaml"
 
 if [ -n "${BUNDLE:-}" ]; then
+  mkdir -p /etc/k0s/containerd.d/certs.d/_default
+  printf '[plugins."io.containerd.cri.v1.images".registry]\nconfig_path = "/etc/k0s/containerd.d/certs.d"\n' > /etc/k0s/containerd.d/cri-registry.toml
+  printf 'server = "https://127.0.0.1:1"\n' > /etc/k0s/containerd.d/certs.d/_default/hosts.toml
   bin/bedrock init -f "$workdir/cluster.yaml" --bundle "$BUNDLE" --timeout 20m
   test -f /var/lib/k0s/images/k0s-airgap.tar
   test "$(ls /var/lib/k0s/images/*.tar | wc -l)" -ge 3
@@ -85,6 +88,9 @@ kubectl get cluster cluster -o jsonpath='{.status.version}' | grep -qx "$version
 kubectl wait --for=condition=Available cluster/cluster --timeout=120s
 if [ "$image" = "localhost:5000/bedrock:dev" ]; then
   test "$(kubectl -n bedrock-system get deploy/bedrock-operator -o jsonpath='{.spec.template.spec.containers[0].image}')" = "$image"
+fi
+if kubectl get pods -A -o jsonpath='{range .items[*]}{.status.containerStatuses[*].state.waiting.reason}{"\n"}{end}' | grep -qE 'ImagePullBackOff|ErrImagePull'; then
+  exit 1
 fi
 kubectl -n cert-manager rollout status deployment/cert-manager --timeout=300s
 kubectl get host "$(hostname | tr '[:upper:]' '[:lower:]')" -o jsonpath='{.spec.roles}' | grep -q ceph-osd
