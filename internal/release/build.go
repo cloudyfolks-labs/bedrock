@@ -45,6 +45,8 @@ type BuildOptions struct {
 	Root       string
 	K0sBaseURL string
 	CacheDir   string
+	PinDigests bool
+	Resolve    Resolver
 }
 
 func LoadBuildConfig(path string) (BuildConfig, error) {
@@ -117,6 +119,22 @@ func Build(cfg BuildConfig, opts BuildOptions) error {
 		files = append(files, out...)
 	}
 	files = rewriteBedrockImage(files, opts.Image)
+	if opts.PinDigests {
+		resolve := opts.Resolve
+		if resolve == nil {
+			resolve = RemoteDigest
+		}
+		provisional, err := loadRenderedGroups(files)
+		if err != nil {
+			return err
+		}
+		pins, err := ResolveDigests(context.Background(), mergeImages(ImagesOf(provisional), extraImagesOf(cfg)), bedrockImagePrefix, resolve)
+		if err != nil {
+			return err
+		}
+		files = PinImages(files, pins)
+		cfg = pinExtraImages(cfg, pins)
+	}
 	if err := writeManifests(cfg, files, opts.Out); err != nil {
 		return err
 	}
@@ -148,6 +166,35 @@ func extraImagesOf(cfg BuildConfig) []string {
 		images = append(images, component.ExtraImages...)
 	}
 	return images
+}
+
+func loadRenderedGroups(files []rendered) ([]Group, error) {
+	byGroup := map[string][]*unstructured.Unstructured{}
+	for _, file := range files {
+		byGroup[file.group] = append(byGroup[file.group], file.objects...)
+	}
+	groups := make([]Group, 0, len(byGroup))
+	for name, objects := range byGroup {
+		groups = append(groups, Group{Name: name, Objects: objects})
+	}
+	return groups, nil
+}
+
+func pinExtraImages(cfg BuildConfig, pins map[string]string) BuildConfig {
+	components := make([]ComponentConfig, 0, len(cfg.Components))
+	for _, component := range cfg.Components {
+		extra := make([]string, 0, len(component.ExtraImages))
+		for _, image := range component.ExtraImages {
+			if pinned, ok := pins[image]; ok {
+				image = pinned
+			}
+			extra = append(extra, image)
+		}
+		component.ExtraImages = extra
+		components = append(components, component)
+	}
+	cfg.Components = components
+	return cfg
 }
 
 func mergeImages(images, extra []string) []string {

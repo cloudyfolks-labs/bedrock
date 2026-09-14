@@ -1,6 +1,7 @@
 package release
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,19 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+func testBuild(t *testing.T) (BuildConfig, BuildOptions) {
+	t.Helper()
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Fatal("helm is required on PATH for the release builder tests")
+	}
+	cfg, err := LoadBuildConfig(filepath.Join("testdata", "build", "components.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := BuildOptions{Version: "v9.9.9", Image: "ghcr.io/cloudyfolks-labs/bedrock:v9.9.9", Out: t.TempDir(), Helm: "helm", Root: filepath.Join("testdata", "build"), K0sBaseURL: ""}
+	return cfg, opts
+}
 
 func TestBuildRendersChartsAndDirs(t *testing.T) {
 	if _, err := exec.LookPath("helm"); err != nil {
@@ -100,6 +114,29 @@ func TestBuildMergesSameNamedOutputs(t *testing.T) {
 	}
 	if !kinds["Deployment"] || !kinds["ConfigMap"] {
 		t.Fatalf("expected both Deployment and ConfigMap, got %+v", objects)
+	}
+}
+
+func TestBuildPinsDigestsWhenRequested(t *testing.T) {
+	cfg, opts := testBuild(t)
+	opts.PinDigests = true
+	opts.Resolve = func(_ context.Context, ref string) (string, error) {
+		return "sha256:" + strings.Repeat("c", 64), nil
+	}
+	if err := Build(cfg, opts); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := Load(os.DirFS(opts.Out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, image := range bundle.Images {
+		if strings.HasPrefix(image, bedrockImagePrefix) {
+			continue
+		}
+		if !strings.Contains(image, "@sha256:") {
+			t.Fatalf("image %s is not pinned", image)
+		}
 	}
 }
 
