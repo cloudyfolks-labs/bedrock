@@ -10,12 +10,14 @@ import (
 	"path/filepath"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/types"
+)
+
+const (
+	annotationRefName   = "org.opencontainers.image.ref.name"
+	annotationImageName = "io.containerd.image.name"
 )
 
 func PullLayout(ctx context.Context, ref, dest string) (string, error) {
@@ -27,16 +29,16 @@ func PullLayout(ctx context.Context, ref, dest string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("pull %s: %w", ref, err)
 	}
-	index, err := indexOf(desc)
-	if err != nil {
-		return "", fmt.Errorf("pull %s: %w", ref, err)
-	}
 	dir, err := os.MkdirTemp(filepath.Dir(dest), ".layout-")
 	if err != nil {
 		return "", err
 	}
 	defer os.RemoveAll(dir)
-	if _, err := layout.Write(dir, index); err != nil {
+	path, err := layout.Write(dir, empty.Index)
+	if err != nil {
+		return "", fmt.Errorf("write layout %s: %w", ref, err)
+	}
+	if err := appendNamed(path, desc, ref); err != nil {
 		return "", fmt.Errorf("write layout %s: %w", ref, err)
 	}
 	if err := tarDirectory(dir, dest); err != nil {
@@ -46,15 +48,23 @@ func PullLayout(ctx context.Context, ref, dest string) (string, error) {
 	return desc.Digest.String(), nil
 }
 
-func indexOf(desc *remote.Descriptor) (v1.ImageIndex, error) {
+func refAnnotations(ref string) layout.Option {
+	return layout.WithAnnotations(map[string]string{annotationRefName: ref, annotationImageName: ref})
+}
+
+func appendNamed(path layout.Path, desc *remote.Descriptor, ref string) error {
 	if desc.MediaType.IsIndex() {
-		return desc.ImageIndex()
+		index, err := desc.ImageIndex()
+		if err != nil {
+			return err
+		}
+		return path.AppendIndex(index, refAnnotations(ref))
 	}
 	img, err := desc.Image()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return mutate.AppendManifests(mutate.IndexMediaType(empty.Index, types.OCIImageIndex), mutate.IndexAddendum{Add: img}), nil
+	return path.AppendImage(img, refAnnotations(ref))
 }
 
 func tarDirectory(dir, dest string) error {

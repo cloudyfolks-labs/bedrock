@@ -3,6 +3,7 @@ package release
 import (
 	"archive/tar"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
@@ -33,6 +35,33 @@ func tarEntries(t *testing.T, path string) []string {
 			t.Fatal(err)
 		}
 		names = append(names, header.Name)
+	}
+}
+
+func indexManifestFromTar(t *testing.T, path string) v1.IndexManifest {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	reader := tar.NewReader(file)
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			t.Fatal("index.json not found in layout tar")
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if header.Name != "index.json" {
+			continue
+		}
+		var index v1.IndexManifest
+		if err := json.NewDecoder(reader).Decode(&index); err != nil {
+			t.Fatal(err)
+		}
+		return index
 	}
 }
 
@@ -103,6 +132,96 @@ func TestPullLayoutWrapsSingleImage(t *testing.T) {
 	}
 	if entries := strings.Join(tarEntries(t, dest), "\n"); !strings.Contains(entries, "index.json") {
 		t.Fatal("layout tar lacks index.json")
+	}
+}
+
+func TestPullLayoutNamesTheIndex(t *testing.T) {
+	server := httptest.NewServer(registry.New())
+	defer server.Close()
+	host := strings.TrimPrefix(server.URL, "http://")
+	ref, err := name.ParseReference(host + "/lib/named-index:1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx, err := random.Index(128, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(ref, idx); err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir() + "/named-index.tar"
+	digest, err := PullLayout(context.Background(), ref.String(), dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written := indexManifestFromTar(t, dest)
+	if len(written.Manifests) != 1 {
+		t.Fatalf("index.json has %d manifests, want 1", len(written.Manifests))
+	}
+	entry := written.Manifests[0]
+	if !entry.MediaType.IsIndex() {
+		t.Fatalf("entry media type %s is not an index", entry.MediaType)
+	}
+	if entry.Digest.String() != digest {
+		t.Fatalf("entry digest %s want %s", entry.Digest, digest)
+	}
+	for _, key := range []string{annotationRefName, annotationImageName} {
+		if got := entry.Annotations[key]; got != ref.String() {
+			t.Fatalf("annotation %s = %q want %q", key, got, ref.String())
+		}
+	}
+	entries := strings.Join(tarEntries(t, dest), "\n")
+	if !strings.Contains(entries, "blobs/sha256/"+entry.Digest.Hex) {
+		t.Fatalf("nested index blob %s missing from layout", entry.Digest)
+	}
+	manifests, err := idx.IndexManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range manifests.Manifests {
+		if !strings.Contains(entries, "blobs/sha256/"+m.Digest.Hex) {
+			t.Fatalf("platform manifest %s missing from layout", m.Digest)
+		}
+	}
+}
+
+func TestPullLayoutNamesTheSingleImage(t *testing.T) {
+	server := httptest.NewServer(registry.New())
+	defer server.Close()
+	host := strings.TrimPrefix(server.URL, "http://")
+	ref, err := name.ParseReference(host + "/lib/single:1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := random.Image(64, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(ref, img); err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir() + "/single.tar"
+	digest, err := PullLayout(context.Background(), ref.String(), dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := img.Digest()
+	if digest != want.String() {
+		t.Fatalf("digest %s want %s", digest, want)
+	}
+	written := indexManifestFromTar(t, dest)
+	if len(written.Manifests) != 1 {
+		t.Fatalf("index.json has %d manifests, want 1", len(written.Manifests))
+	}
+	entry := written.Manifests[0]
+	if entry.Digest.String() != want.String() {
+		t.Fatalf("entry digest %s want %s", entry.Digest, want)
+	}
+	for _, key := range []string{annotationRefName, annotationImageName} {
+		if got := entry.Annotations[key]; got != ref.String() {
+			t.Fatalf("annotation %s = %q want %q", key, got, ref.String())
+		}
 	}
 }
 
