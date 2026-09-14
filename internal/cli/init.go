@@ -246,6 +246,7 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	fmt.Fprintf(stdout, "cluster %s ready\n", bundle.Spec.Version)
 	fmt.Fprintf(stdout, "kubeconfig: %s\n", filepath.Join(o.dataDir, "pki", "admin.conf"))
 	fmt.Fprintf(stdout, "join nodes with: bedrock token create --roles %s\n", strings.Join(cfg.Spec.Roles, ","))
+	removeBundleDir(bundleDir)
 	return 0
 }
 
@@ -336,6 +337,12 @@ func openBundle(o initOptions, configured string) (string, error) {
 		return "", fmt.Errorf("bundle %s: %w", path, err)
 	}
 	return dir, nil
+}
+
+func removeBundleDir(dir string) {
+	if dir != "" {
+		os.RemoveAll(dir)
+	}
 }
 
 func writeK0sConfig(path string, cfg v1alpha1.ClusterConfig) error {

@@ -488,6 +488,9 @@ func TestRunInitFromBundle(t *testing.T) {
 	if tars != 3 || !airgap {
 		t.Fatalf("images dir entries %v", entries)
 	}
+	if _, err := os.Stat(filepath.Join(workDir, "bundle")); !os.IsNotExist(err) {
+		t.Fatal("extracted bundle dir must be removed after a successful init")
+	}
 }
 
 func TestRunInitWritesMirror(t *testing.T) {

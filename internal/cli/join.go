@@ -145,5 +145,6 @@ func RunJoin(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		}
 	}
 	fmt.Fprintf(stdout, "joined as %s\n", strings.Join(nodeRoles, ","))
+	removeBundleDir(bundleDir)
 	return 0
 }
