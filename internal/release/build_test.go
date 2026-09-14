@@ -140,6 +140,38 @@ func TestBuildPinsDigestsWhenRequested(t *testing.T) {
 	}
 }
 
+func TestBuildSkipsConfiguredImageWhenPinning(t *testing.T) {
+	cfg, opts := testBuild(t)
+	opts.Image = "localhost:5000/bedrock:dev"
+	opts.PinDigests = true
+	opts.Resolve = func(_ context.Context, ref string) (string, error) {
+		return "sha256:" + strings.Repeat("c", 64), nil
+	}
+	if err := Build(cfg, opts); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := Load(os.DirFS(opts.Out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Spec.Image != opts.Image {
+		t.Fatalf("spec image %s, want %s", bundle.Spec.Image, opts.Image)
+	}
+	found := false
+	for _, image := range bundle.Images {
+		if image == opts.Image {
+			found = true
+			continue
+		}
+		if !strings.Contains(image, "@sha256:") {
+			t.Fatalf("image %s is not pinned", image)
+		}
+	}
+	if !found {
+		t.Fatalf("images %v do not contain the unpinned configured image %s", bundle.Images, opts.Image)
+	}
+}
+
 func TestValidateOutRejectsDangerousPaths(t *testing.T) {
 	cwd, err := os.Getwd()
 	if err != nil {

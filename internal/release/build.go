@@ -125,7 +125,7 @@ func Build(cfg BuildConfig, opts BuildOptions) error {
 			resolve = RemoteDigest
 		}
 		provisional := loadRenderedGroups(files)
-		pins, err := ResolveDigests(context.Background(), mergeImages(ImagesOf(provisional), extraImagesOf(cfg)), bedrockImagePrefix, resolve)
+		pins, err := ResolveDigests(context.Background(), mergeImages(ImagesOf(provisional), extraImagesOf(cfg)), opts.Image, resolve)
 		if err != nil {
 			return err
 		}
