@@ -124,10 +124,7 @@ func Build(cfg BuildConfig, opts BuildOptions) error {
 		if resolve == nil {
 			resolve = RemoteDigest
 		}
-		provisional, err := loadRenderedGroups(files)
-		if err != nil {
-			return err
-		}
+		provisional := loadRenderedGroups(files)
 		pins, err := ResolveDigests(context.Background(), mergeImages(ImagesOf(provisional), extraImagesOf(cfg)), bedrockImagePrefix, resolve)
 		if err != nil {
 			return err
@@ -168,7 +165,7 @@ func extraImagesOf(cfg BuildConfig) []string {
 	return images
 }
 
-func loadRenderedGroups(files []rendered) ([]Group, error) {
+func loadRenderedGroups(files []rendered) []Group {
 	byGroup := map[string][]*unstructured.Unstructured{}
 	for _, file := range files {
 		byGroup[file.group] = append(byGroup[file.group], file.objects...)
@@ -177,7 +174,7 @@ func loadRenderedGroups(files []rendered) ([]Group, error) {
 	for name, objects := range byGroup {
 		groups = append(groups, Group{Name: name, Objects: objects})
 	}
-	return groups, nil
+	return groups
 }
 
 func pinExtraImages(cfg BuildConfig, pins map[string]string) BuildConfig {
@@ -293,12 +290,21 @@ func stripComponentLabel(objects []*unstructured.Unstructured) []*unstructured.U
 }
 
 func rewriteBedrockImage(files []rendered, image string) []rendered {
+	return rewriteImageRefs(files, func(current string) (string, bool) {
+		if strings.HasPrefix(current, bedrockImagePrefix) {
+			return image, true
+		}
+		return "", false
+	})
+}
+
+func rewriteImageRefs(files []rendered, decide func(current string) (string, bool)) []rendered {
 	out := make([]rendered, 0, len(files))
 	for _, file := range files {
 		objects := make([]*unstructured.Unstructured, 0, len(file.objects))
 		for _, obj := range file.objects {
 			copy := obj.DeepCopy()
-			rewriteImages(copy.Object, image)
+			walkImageFields(copy.Object, decide)
 			objects = append(objects, copy)
 		}
 		out = append(out, rendered{group: file.group, file: file.file, objects: objects})
@@ -306,21 +312,23 @@ func rewriteBedrockImage(files []rendered, image string) []rendered {
 	return out
 }
 
-func rewriteImages(node any, image string) {
+func walkImageFields(node any, decide func(current string) (string, bool)) {
 	switch value := node.(type) {
 	case map[string]any:
 		for key, child := range value {
 			if key == "image" {
-				if current, ok := child.(string); ok && strings.HasPrefix(current, bedrockImagePrefix) {
-					value[key] = image
+				if current, ok := child.(string); ok {
+					if replacement, found := decide(current); found {
+						value[key] = replacement
+					}
 					continue
 				}
 			}
-			rewriteImages(child, image)
+			walkImageFields(child, decide)
 		}
 	case []any:
 		for _, child := range value {
-			rewriteImages(child, image)
+			walkImageFields(child, decide)
 		}
 	}
 }

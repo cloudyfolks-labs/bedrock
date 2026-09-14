@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type Resolver func(ctx context.Context, ref string) (string, error)
@@ -52,36 +51,8 @@ func pinnedReference(image, digest string) string {
 }
 
 func PinImages(files []rendered, pins map[string]string) []rendered {
-	out := make([]rendered, 0, len(files))
-	for _, file := range files {
-		objects := make([]*unstructured.Unstructured, 0, len(file.objects))
-		for _, obj := range file.objects {
-			copy := obj.DeepCopy()
-			pinNode(copy.Object, pins)
-			objects = append(objects, copy)
-		}
-		out = append(out, rendered{group: file.group, file: file.file, objects: objects})
-	}
-	return out
-}
-
-func pinNode(node any, pins map[string]string) {
-	switch value := node.(type) {
-	case map[string]any:
-		for key, child := range value {
-			if key == "image" {
-				if current, ok := child.(string); ok {
-					if pinned, found := pins[current]; found {
-						value[key] = pinned
-					}
-					continue
-				}
-			}
-			pinNode(child, pins)
-		}
-	case []any:
-		for _, child := range value {
-			pinNode(child, pins)
-		}
-	}
+	return rewriteImageRefs(files, func(current string) (string, bool) {
+		pinned, found := pins[current]
+		return pinned, found
+	})
 }
