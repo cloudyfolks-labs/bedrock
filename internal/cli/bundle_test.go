@@ -201,8 +201,14 @@ func TestRunBundlePullFailsCosignVerification(t *testing.T) {
 	exec := &host.FakeExec{Errors: map[string]error{}}
 	exec.ErrorPrefixes = map[string]error{"cosign verify-blob": &host.ExitError{Code: 1}}
 	deps := BundleDeps{Exec: exec, LookPath: func(string) (string, error) { return "/usr/bin/cosign", nil }}
+	out := t.TempDir()
 	var stdout, stderr bytes.Buffer
-	if code := RunBundlePull(context.Background(), bundlePullOptions{version: "v0.1.0", out: t.TempDir(), arch: "amd64", baseURL: server.URL}, deps, &stdout, &stderr); code == 0 {
+	if code := RunBundlePull(context.Background(), bundlePullOptions{version: "v0.1.0", out: out, arch: "amd64", baseURL: server.URL}, deps, &stdout, &stderr); code == 0 {
 		t.Fatal("expected failure when cosign rejects")
+	}
+	for _, name := range []string{sumsFile, sigstoreBundleFile, BundleAssetName("v0.1.0", "amd64")} {
+		if _, err := os.Stat(filepath.Join(out, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s must be removed after a failed signature check", name)
+		}
 	}
 }

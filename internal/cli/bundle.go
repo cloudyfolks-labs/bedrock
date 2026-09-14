@@ -171,6 +171,9 @@ func RunBundlePull(ctx context.Context, o bundlePullOptions, deps BundleDeps, st
 		}
 	}
 	if err := verifySignature(ctx, deps, o, stdout, stderr); err != nil {
+		for _, name := range []string{sumsFile, sigstoreBundleFile, asset} {
+			os.Remove(filepath.Join(o.out, name))
+		}
 		return fail(stderr, err)
 	}
 	sums, err := os.ReadFile(filepath.Join(o.out, sumsFile))
