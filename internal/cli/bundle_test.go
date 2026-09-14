@@ -61,6 +61,54 @@ func TestRunBundleBuildProducesArchive(t *testing.T) {
 	}
 }
 
+func TestRunBundleBuildDownloadsK0sWhenMissing(t *testing.T) {
+	k0sContent := []byte("k0s-downloaded")
+	sum := sha256.Sum256(k0sContent)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(k0sContent)
+	}))
+	defer server.Close()
+	cache := t.TempDir()
+	releaseDir := t.TempDir()
+	writeBundleRelease(t, releaseDir, "sha256:"+hex.EncodeToString(sum[:]))
+	airgap := filepath.Join(t.TempDir(), "airgap.tar")
+	os.WriteFile(airgap, []byte("airgap"), 0o644)
+	deps := BundleDeps{
+		Pull: func(_ context.Context, ref, dest string) (string, error) {
+			return "sha256:" + strings.Repeat("f", 64), os.WriteFile(dest, []byte(ref), 0o644)
+		},
+		Airgap: func(_ context.Context, _, _, _, _ string) (string, error) { return airgap, nil },
+	}
+	out := filepath.Join(t.TempDir(), "bedrock-v0.1.0-bundle-amd64.tar.zst")
+	var stdout, stderr bytes.Buffer
+	code := RunBundleBuild(context.Background(), bundleBuildOptions{releaseDir: releaseDir, arch: "amd64", out: out, cacheDir: cache, k0sBaseURL: server.URL}, deps, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	got, err := os.ReadFile(filepath.Join(cache, "k0s", "v1.36.3+k0s.0", "amd64"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(k0sContent) {
+		t.Fatalf("k0s binary content %q", got)
+	}
+}
+
+func TestRunBundleBuildFailsWithoutK0sAndBaseURL(t *testing.T) {
+	cache := t.TempDir()
+	releaseDir := t.TempDir()
+	writeBundleRelease(t, releaseDir, "sha256:"+strings.Repeat("a", 64))
+	out := filepath.Join(t.TempDir(), "bedrock-v0.1.0-bundle-amd64.tar.zst")
+	var stdout, stderr bytes.Buffer
+	code := RunBundleBuild(context.Background(), bundleBuildOptions{releaseDir: releaseDir, arch: "amd64", out: out, cacheDir: cache, k0sBaseURL: ""}, BundleDeps{}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatal("expected failure when k0s binary missing and no base url")
+	}
+	if !strings.Contains(stderr.String(), "is missing and no base url is set") {
+		t.Fatalf("stderr %q", stderr.String())
+	}
+}
+
 func TestBundleAssetName(t *testing.T) {
 	if got := BundleAssetName("v0.1.0", "amd64"); got != "bedrock-v0.1.0-bundle-amd64.tar.zst" {
 		t.Fatal(got)
