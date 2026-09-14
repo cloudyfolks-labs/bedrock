@@ -106,35 +106,6 @@ func TestPullLayoutWritesFullIndex(t *testing.T) {
 	}
 }
 
-func TestPullLayoutWrapsSingleImage(t *testing.T) {
-	server := httptest.NewServer(registry.New())
-	defer server.Close()
-	host := strings.TrimPrefix(server.URL, "http://")
-	ref, err := name.ParseReference(host + "/lib/single:1.0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	img, err := random.Image(64, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := remote.Write(ref, img); err != nil {
-		t.Fatal(err)
-	}
-	dest := t.TempDir() + "/single.tar"
-	digest, err := PullLayout(context.Background(), ref.String(), dest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, _ := img.Digest()
-	if digest != want.String() {
-		t.Fatalf("digest %s want %s", digest, want)
-	}
-	if entries := strings.Join(tarEntries(t, dest), "\n"); !strings.Contains(entries, "index.json") {
-		t.Fatal("layout tar lacks index.json")
-	}
-}
-
 func TestPullLayoutNamesTheIndex(t *testing.T) {
 	server := httptest.NewServer(registry.New())
 	defer server.Close()

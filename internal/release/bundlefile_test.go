@@ -142,6 +142,79 @@ func TestOpenBundleRejectsEscapingPaths(t *testing.T) {
 	}
 }
 
+type tarEntry struct {
+	header *tar.Header
+	body   []byte
+}
+
+func writeTarZst(t *testing.T, path string, entries []tarEntry) {
+	t.Helper()
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	zw, err := zstd.NewWriter(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(zw)
+	for _, entry := range entries {
+		entry.header.Size = int64(len(entry.body))
+		if err := tw.WriteHeader(entry.header); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(entry.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExtractAllRejectsUnsafeEntries(t *testing.T) {
+	unsafe := []struct {
+		name  string
+		entry tarEntry
+	}{
+		{"symlink", tarEntry{header: &tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd", Mode: 0o777}}},
+		{"hardlink", tarEntry{header: &tar.Header{Name: "link", Typeflag: tar.TypeLink, Linkname: "target", Mode: 0o644}}},
+		{"absolute path", tarEntry{header: &tar.Header{Name: "/etc/x", Typeflag: tar.TypeReg, Mode: 0o644}, body: []byte("x")}},
+	}
+	for _, c := range unsafe {
+		t.Run(c.name, func(t *testing.T) {
+			archive := filepath.Join(t.TempDir(), "evil.tar.zst")
+			writeTarZst(t, archive, []tarEntry{c.entry})
+			if _, err := OpenBundle(archive, t.TempDir()); err == nil {
+				t.Fatalf("expected error for %s entry", c.name)
+			}
+		})
+	}
+	t.Run("setuid regular file", func(t *testing.T) {
+		archive := filepath.Join(t.TempDir(), "setuid.tar.zst")
+		writeTarZst(t, archive, []tarEntry{
+			{header: &tar.Header{Name: BundleFileName, Typeflag: tar.TypeReg, Mode: 0o644}, body: []byte("version: v1\n")},
+			{header: &tar.Header{Name: "setuid", Typeflag: tar.TypeReg, Mode: 0o4755}, body: []byte("x")},
+		})
+		dest := t.TempDir()
+		if _, err := OpenBundle(archive, dest); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(filepath.Join(dest, "setuid"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSetuid == 0 {
+			return
+		}
+		t.Fatalf("setuid bit not stripped: %v", info.Mode())
+	})
+}
+
 func fileSHA256OrFail(t *testing.T, path string) string {
 	t.Helper()
 	sum, err := FileSHA256(path)
