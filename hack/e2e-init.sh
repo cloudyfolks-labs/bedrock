@@ -98,7 +98,7 @@ kubectl -n cert-manager rollout status deployment/cert-manager --timeout=300s
 systemctl is-active bedrock-agent.service
 node=$(hostname | tr '[:upper:]' '[:lower:]')
 for i in $(seq 1 30); do
-  cores=$(kubectl get host "$node" -o jsonpath='{.status.inventory.cpu.cores}')
+  cores=$(kubectl get host "$node" -o jsonpath='{.status.inventory.cpu.cores}' 2>/dev/null || true)
   [ -n "$cores" ] && [ "$cores" -gt 0 ] && break
   sleep 5
 done
