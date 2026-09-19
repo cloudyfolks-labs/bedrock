@@ -97,17 +97,24 @@ fi
 kubectl -n cert-manager rollout status deployment/cert-manager --timeout=300s
 systemctl is-active bedrock-agent.service
 node=$(hostname | tr '[:upper:]' '[:lower:]')
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   cores=$(kubectl get host "$node" -o jsonpath='{.status.inventory.cpu.cores}' 2>/dev/null || true)
-  [ -n "$cores" ] && [ "$cores" -gt 0 ] && break
+  if [ "${cores:-0}" -gt 0 ] 2>/dev/null; then break; fi
   sleep 5
 done
-test "$cores" -gt 0
+if ! [ "${cores:-0}" -gt 0 ] 2>/dev/null; then
+  echo "agent did not report cpu cores on host $node"
+  exit 1
+fi
 test "$(kubectl get host "$node" -o jsonpath='{.status.inventory.memoryBytes}')" -gt 0
 test "$(kubectl get host "$node" -o jsonpath='{.status.inventory.disks[0].path}')" != ""
 kubectl get hostconfig "$node" -o jsonpath='{.spec.modules}' | grep -q br_netfilter
 kubectl get node "$node" -o jsonpath='{.metadata.labels.bedrock\.cloudyfolks\.io/managed}' | grep -qx false
-! kubectl --as=system:node:other --as-group=system:nodes patch host "$node" --subresource=status --type=merge -p '{"status":{"kubernetesVersion":"x"}}' || exit 1
+if kubectl --as=system:node:other --as-group=system:nodes patch host "$node" --subresource=status --type=merge -p '{"status":{"kubernetesVersion":"x"}}' 2>"$workdir/impersonate.err"; then
+  echo "impersonated status patch must be denied"
+  exit 1
+fi
+grep -q 'a node may only update the status of its own Host' "$workdir/impersonate.err"
 kubectl patch host "$node" --type=merge -p '{"spec":{"management":{"enabled":true}}}'
 kubectl wait --for=condition=ManagementApplied host/"$node" --timeout=180s
 test -f /etc/sysctl.d/90-bedrock.conf
