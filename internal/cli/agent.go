@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -96,17 +97,9 @@ func RunAgent(ctx context.Context, o agentOptions, deps AgentDeps, stderr io.Wri
 		Packages:  pkgmgr.Manager{Exec: deps.Exec, Family: family, Root: o.root},
 	}
 	for {
-		c, loaded, err := deps.Load(o.kubeconfig)
+		changed, err := runUntilKubeconfigChanges(ctx, o, deps, agentDeps, stderr)
 		if err != nil {
 			return err
-		}
-		runCtx, cancel := context.WithCancel(ctx)
-		done := make(chan error, 1)
-		go func() { done <- deps.Run(runCtx, c, agentDeps) }()
-		changed := waitForChange(runCtx, o.kubeconfig, loaded, o.interval)
-		cancel()
-		if err := <-done; err != nil {
-			fmt.Fprintf(stderr, "agent: %v\n", err)
 		}
 		if !changed {
 			return nil
@@ -114,18 +107,42 @@ func RunAgent(ctx context.Context, o agentOptions, deps AgentDeps, stderr io.Wri
 	}
 }
 
-func waitForChange(ctx context.Context, path string, loaded time.Time, interval time.Duration) bool {
-	ticker := time.NewTicker(interval)
+func runUntilKubeconfigChanges(ctx context.Context, o agentOptions, deps AgentDeps, agentDeps agent.Deps, stderr io.Writer) (bool, error) {
+	c, loaded, err := deps.Load(o.kubeconfig)
+	if err != nil {
+		return false, err
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- deps.Run(runCtx, c, agentDeps) }()
+	ticker := time.NewTicker(o.interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			return false
-		case <-ticker.C:
-			info, err := os.Stat(path)
-			if err == nil && !info.ModTime().Equal(loaded) {
-				return true
+			cancel()
+			reportExit(stderr, <-done)
+			return false, nil
+		case err := <-done:
+			if err != nil {
+				return false, err
 			}
+			return false, errors.New("agent loop exited")
+		case <-ticker.C:
+			info, err := os.Stat(o.kubeconfig)
+			if err != nil || info.ModTime().Equal(loaded) {
+				continue
+			}
+			cancel()
+			reportExit(stderr, <-done)
+			return true, nil
 		}
+	}
+}
+
+func reportExit(stderr io.Writer, err error) {
+	if err != nil {
+		fmt.Fprintf(stderr, "agent: %v\n", err)
 	}
 }

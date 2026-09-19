@@ -75,13 +75,63 @@ func TestRunAgentFailsWhenKubeconfigMissing(t *testing.T) {
 }
 
 func TestRunAgentReportsUnknownPackageFamily(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kubelet.conf")
+	if err := os.WriteFile(path, []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	family := "unread"
 	var log bytes.Buffer
-	deps := AgentDeps{Exec: &host.FakeExec{}, OSID: "plan9", Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, errors.New("missing") }}
-	if err := RunAgent(context.Background(), agentOptions{kubeconfig: "/nonexistent", node: "n", root: "/", interval: time.Second}, deps, &log); err == nil {
+	deps := AgentDeps{
+		Exec: &host.FakeExec{},
+		OSID: "plan9",
+		Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, nil },
+		Run: func(_ context.Context, _ client.WithWatch, d agent.Deps) error {
+			family = d.Packages.Family
+			return errors.New("stop")
+		},
+	}
+	if err := RunAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Second}, deps, &log); err == nil {
 		t.Fatal("expected error")
+	}
+	if family != "" {
+		t.Fatalf("family %q", family)
 	}
 	if !bytes.Contains(log.Bytes(), []byte("no package manager known")) {
 		t.Fatalf("stderr %s", log.String())
+	}
+}
+
+func TestRunAgentExitsWhenTheLoopReturns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kubelet.conf")
+	if err := os.WriteFile(path, []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deps := AgentDeps{
+		Exec: &host.FakeExec{},
+		OSID: "ubuntu",
+		Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, nil },
+		Run:  func(context.Context, client.WithWatch, agent.Deps) error { return nil },
+	}
+	err := RunAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Hour}, deps, &bytes.Buffer{})
+	if err == nil || err.Error() != "agent loop exited" {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestRunAgentReturnsTheLoopError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kubelet.conf")
+	if err := os.WriteFile(path, []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("watch failed")
+	deps := AgentDeps{
+		Exec: &host.FakeExec{},
+		OSID: "ubuntu",
+		Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, nil },
+		Run:  func(context.Context, client.WithWatch, agent.Deps) error { return want },
+	}
+	if err := RunAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Hour}, deps, &bytes.Buffer{}); !errors.Is(err, want) {
+		t.Fatalf("err %v", err)
 	}
 }
 
