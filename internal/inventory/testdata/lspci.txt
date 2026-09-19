@@ -1,0 +1,11 @@
+Slot:	0000:01:00.0
+Class:	Ethernet controller [0200]
+Vendor:	Intel Corporation [8086]
+Device:	Ethernet Controller 10G X550T [1563]
+Driver:	ixgbe
+
+Slot:	0000:02:00.0
+Class:	VGA compatible controller [0300]
+Vendor:	ASPEED Technology, Inc. [1a03]
+Device:	ASPEED Graphics Family [2000]
+

@@ -1,0 +1,5 @@
+[
+ {"ifindex": 1, "ifname": "lo", "link_type": "loopback", "operstate": "UNKNOWN", "address": "00:00:00:00:00:00"},
+ {"ifindex": 2, "ifname": "eth0", "link_type": "ether", "operstate": "UP", "address": "3c:ec:ef:12:34:56"},
+ {"ifindex": 5, "ifname": "kube-bridge", "link_type": "ether", "operstate": "UP", "address": "aa:bb:cc:dd:ee:ff", "linkinfo": {"info_kind": "bridge"}}
+]

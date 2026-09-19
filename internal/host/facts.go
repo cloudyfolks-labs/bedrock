@@ -46,7 +46,7 @@ type addrEntry struct {
 }
 
 func Gather(ctx context.Context, e Exec, root string, freeBytes func(string) (uint64, error), uid int) (Facts, error) {
-	id, version, err := readOSRelease(filepath.Join(root, "etc", "os-release"))
+	id, version, err := ReadOSRelease(filepath.Join(root, "etc", "os-release"))
 	if err != nil {
 		return Facts{}, err
 	}
@@ -105,7 +105,7 @@ func exists(path string) bool {
 	return err == nil
 }
 
-func readOSRelease(path string) (string, string, error) {
+func ReadOSRelease(path string) (id, versionID string, err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", "", fmt.Errorf("read os-release: %w", err)

@@ -1,0 +1,6 @@
+{"blockdevices": [
+ {"name": "nvme0n1", "path": "/dev/nvme0n1", "model": "SAMSUNG MZQL2960HCJR-00A07", "serial": "S4EVNX0R", "size": 960197124096, "rota": false, "wwn": "eui.36344730", "type": "disk", "mountpoints": ["/"], "fstype": null},
+ {"name": "nvme0n1p1", "path": "/dev/nvme0n1p1", "model": null, "serial": null, "size": 1048576, "rota": false, "wwn": null, "type": "part", "mountpoints": [], "fstype": "ext4"},
+ {"name": "sda", "path": "/dev/sda", "model": "ST4000NM000A", "serial": "WJG1ABCD", "size": 4000787030016, "rota": true, "wwn": "0x5000c500b1c2d3e4", "type": "disk", "mountpoints": [null], "fstype": null},
+ {"name": "loop0", "path": "/dev/loop0", "model": null, "serial": null, "size": 4096, "rota": false, "wwn": null, "type": "loop", "mountpoints": [null], "fstype": null}
+]}
