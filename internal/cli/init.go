@@ -31,13 +31,14 @@ import (
 const initFieldOwner = "bedrock-init"
 
 type InitDeps struct {
-	Exec      host.Exec
-	Uid       int
-	FreeBytes func(string) (uint64, error)
-	Stat      func(string) (fs.FileInfo, error)
-	Root      string
-	FromImage func(ctx context.Context, ref, arch, dest string) error
-	NewClient func(kubeconfig string) (client.Client, error)
+	Exec       host.Exec
+	Uid        int
+	FreeBytes  func(string) (uint64, error)
+	Stat       func(string) (fs.FileInfo, error)
+	Root       string
+	FromImage  func(ctx context.Context, ref, arch, dest string) error
+	NewClient  func(kubeconfig string) (client.Client, error)
+	Executable func() (string, error)
 }
 
 type initOptions struct {
@@ -78,7 +79,7 @@ func parseInitFlags(args []string, stderr io.Writer) (initOptions, error) {
 }
 
 func initCommand(args []string, stdout, stderr io.Writer) int {
-	deps := InitDeps{Exec: host.RealExec{}, Uid: os.Getuid(), FreeBytes: host.FreeBytes, Stat: os.Stat, Root: "/", FromImage: release.FromImage, NewClient: newClusterClient}
+	deps := InitDeps{Exec: host.RealExec{}, Uid: os.Getuid(), FreeBytes: host.FreeBytes, Stat: os.Stat, Root: "/", FromImage: release.FromImage, NewClient: newClusterClient, Executable: os.Executable}
 	return RunInit(context.Background(), args, deps, stdout, stderr)
 }
 
@@ -205,6 +206,11 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		return fail(stderr, err)
 	}
 
+	step(stdout, "agent unit")
+	if err := installAgent(ctx, deps, o.dataDir); err != nil {
+		return fail(stderr, err)
+	}
+
 	c, err := deps.NewClient(filepath.Join(o.dataDir, "pki", "admin.conf"))
 	if err != nil {
 		return fail(stderr, err)
@@ -248,6 +254,17 @@ func RunInit(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 	fmt.Fprintf(stdout, "join nodes with: bedrock token create --roles %s\n", strings.Join(cfg.Spec.Roles, ","))
 	removeBundleDir(bundleDir)
 	return 0
+}
+
+func installAgent(ctx context.Context, deps InitDeps, dataDir string) error {
+	self, err := deps.Executable()
+	if err != nil {
+		return err
+	}
+	if err := host.InstallBinary(self, filepath.Join(deps.Root, host.DefaultAgentBinary)); err != nil {
+		return err
+	}
+	return host.EnsureAgentUnit(ctx, deps.Exec, deps.Root, host.DefaultAgentBinary, filepath.Join(dataDir, "kubelet.conf"))
 }
 
 func clusterVars(ctx context.Context, c client.Client, bundle release.Bundle, vip string) (map[string]string, error) {

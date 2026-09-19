@@ -105,6 +105,7 @@ func fakeHost(t *testing.T) (string, *host.FakeExec) {
 		"ip addr replace 10.0.10.10/32 dev bond0.10":   "",
 		"systemctl daemon-reload":                      "",
 		"systemctl enable bedrock-vip.service":         "",
+		"systemctl enable --now bedrock-agent.service": "",
 		"ip -json addr":                                `[{"addr_info":[{"family":"inet","local":"10.0.10.11"}]}]`,
 		"/usr/local/bin/k0s version":                   "v1.36.3+k0s.0\n",
 		"/usr/local/bin/k0s start":                     "",
@@ -114,6 +115,38 @@ func fakeHost(t *testing.T) (string, *host.FakeExec) {
 		"ping -c 1 -W 1 10.0.10.10":          &host.ExitError{Code: 1},
 	}}
 	return root, e
+}
+
+func fakeExecutable(t *testing.T) func() (string, error) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "bedrock")
+	if err := os.WriteFile(path, []byte("bedrock-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return func() (string, error) { return path, nil }
+}
+
+func assertAgentInstalled(t *testing.T, root, dataDir string, executable func() (string, error)) {
+	t.Helper()
+	unit, err := os.ReadFile(filepath.Join(root, "etc", "systemd", "system", "bedrock-agent.service"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(unit) != host.AgentUnit(host.DefaultAgentBinary, filepath.Join(dataDir, "kubelet.conf")) {
+		t.Fatalf("agent unit %q", unit)
+	}
+	self, err := executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(root, host.DefaultAgentBinary))
+	if err != nil || string(got) != string(want) {
+		t.Fatalf("binary %q %v", got, err)
+	}
 }
 
 func TestRunInitHappyPath(t *testing.T) {
@@ -158,13 +191,15 @@ func TestRunInitHappyPath(t *testing.T) {
 	})
 	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
 	e.Errors["/usr/local/bin/k0s status --data-dir "+dataDir] = &host.ExitError{Code: 1}
+	executable := fakeExecutable(t)
 	deps := InitDeps{
-		Exec:      e,
-		Uid:       0,
-		FreeBytes: func(string) (uint64, error) { return 100 << 30, nil },
-		Stat:      func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
-		Root:      root,
-		NewClient: newClient,
+		Exec:       e,
+		Uid:        0,
+		FreeBytes:  func(string) (uint64, error) { return 100 << 30, nil },
+		Stat:       func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
+		Root:       root,
+		NewClient:  newClient,
+		Executable: executable,
 	}
 	var out, errOut bytes.Buffer
 	code := RunInit(ctx, []string{"-f", configPath, "--release-dir", filepath.Join("..", "release", "testdata", "good"), "--k0s-bin", "/usr/local/bin/k0s", "--data-dir", dataDir, "--timeout", "30s"}, deps, &out, &errOut)
@@ -217,6 +252,7 @@ func TestRunInitHappyPath(t *testing.T) {
 	if !bytes.Contains(out.Bytes(), []byte("cluster v0.1.0-test ready")) {
 		t.Fatalf("stdout %s", out.String())
 	}
+	assertAgentInstalled(t, root, dataDir, executable)
 }
 
 func TestRunInitSkipsInstallWhenAlreadyRunning(t *testing.T) {
@@ -252,13 +288,15 @@ func TestRunInitSkipsInstallWhenAlreadyRunning(t *testing.T) {
 	}()
 	dataDir := filepath.Join(root, "var", "lib", "k0s")
 	e.Responses["/usr/local/bin/k0s status --data-dir "+dataDir] = ""
+	executable := fakeExecutable(t)
 	deps := InitDeps{
-		Exec:      e,
-		Uid:       0,
-		FreeBytes: func(string) (uint64, error) { return 100 << 30, nil },
-		Stat:      func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
-		Root:      root,
-		NewClient: newClient,
+		Exec:       e,
+		Uid:        0,
+		FreeBytes:  func(string) (uint64, error) { return 100 << 30, nil },
+		Stat:       func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
+		Root:       root,
+		NewClient:  newClient,
+		Executable: executable,
 	}
 	var out, errOut bytes.Buffer
 	code := RunInit(ctx, []string{"-f", configPath, "--release-dir", filepath.Join("..", "release", "testdata", "good"), "--k0s-bin", "/usr/local/bin/k0s", "--data-dir", dataDir, "--timeout", "30s"}, deps, &out, &errOut)
@@ -448,13 +486,15 @@ func TestRunInitFromBundle(t *testing.T) {
 	e.Responses[k0sBin+" kubectl get --raw=/readyz"] = "ok"
 	e.Errors[k0sBin+" status --data-dir "+dataDir] = &host.ExitError{Code: 1}
 
+	executable := fakeExecutable(t)
 	deps := InitDeps{
-		Exec:      e,
-		Uid:       0,
-		FreeBytes: func(string) (uint64, error) { return 100 << 30, nil },
-		Stat:      func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
-		Root:      root,
-		NewClient: newClient,
+		Exec:       e,
+		Uid:        0,
+		FreeBytes:  func(string) (uint64, error) { return 100 << 30, nil },
+		Stat:       func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
+		Root:       root,
+		NewClient:  newClient,
+		Executable: executable,
 	}
 	var out, errOut bytes.Buffer
 	code := RunInit(ctx, []string{"-f", configPath, "--bundle", bundlePath, "--work-dir", workDir, "--k0s-bin", k0sBin, "--data-dir", dataDir, "--timeout", "30s"}, deps, &out, &errOut)
@@ -535,13 +575,15 @@ func TestRunInitWritesMirror(t *testing.T) {
 	})
 	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
 	e.Errors["/usr/local/bin/k0s status --data-dir "+dataDir] = &host.ExitError{Code: 1}
+	executable := fakeExecutable(t)
 	deps := InitDeps{
-		Exec:      e,
-		Uid:       0,
-		FreeBytes: func(string) (uint64, error) { return 100 << 30, nil },
-		Stat:      func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
-		Root:      root,
-		NewClient: newClient,
+		Exec:       e,
+		Uid:        0,
+		FreeBytes:  func(string) (uint64, error) { return 100 << 30, nil },
+		Stat:       func(string) (fs.FileInfo, error) { return devInfo{fs.ModeDevice}, nil },
+		Root:       root,
+		NewClient:  newClient,
+		Executable: executable,
 	}
 	var out, errOut bytes.Buffer
 	code := RunInit(ctx, []string{"-f", configPath, "--release-dir", filepath.Join("..", "release", "testdata", "good"), "--k0s-bin", "/usr/local/bin/k0s", "--data-dir", dataDir, "--timeout", "30s"}, deps, &out, &errOut)

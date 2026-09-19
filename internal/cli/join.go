@@ -30,7 +30,7 @@ type joinOptions struct {
 }
 
 func joinCommand(args []string, stdout, stderr io.Writer) int {
-	deps := InitDeps{Exec: host.RealExec{}, Uid: os.Getuid(), FreeBytes: host.FreeBytes, Stat: os.Stat, Root: "/"}
+	deps := InitDeps{Exec: host.RealExec{}, Uid: os.Getuid(), FreeBytes: host.FreeBytes, Stat: os.Stat, Root: "/", Executable: os.Executable}
 	return RunJoin(context.Background(), args, deps, stdout, stderr)
 }
 
@@ -143,6 +143,10 @@ func RunJoin(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		if err := k0sClient.WaitReady(ctx); err != nil {
 			return fail(stderr, err)
 		}
+	}
+	step(stdout, "agent unit")
+	if err := installAgent(ctx, deps, o.dataDir); err != nil {
+		return fail(stderr, err)
 	}
 	fmt.Fprintf(stdout, "joined as %s\n", strings.Join(nodeRoles, ","))
 	removeBundleDir(bundleDir)

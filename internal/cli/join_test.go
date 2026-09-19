@@ -49,7 +49,8 @@ func TestRunJoinInstallsWhenNotRunning(t *testing.T) {
 	tokenPath := filepath.Join(root, "etc", "k0s", "join-token")
 	installArgs := k0s.InstallArgs(k0s.InstallOptions{Role: "worker", Force: true, TokenFile: tokenPath, Labels: roles.Labels([]string{"workload"}), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: dataDir})
 	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
-	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
+	executable := fakeExecutable(t)
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root, Executable: executable}
 	var out, errOut bytes.Buffer
 	code := RunJoin(context.Background(), []string{"--token", joinToken(t), "--data-dir", dataDir, "--k0s-bin", "/usr/local/bin/k0s"}, deps, &out, &errOut)
 	if code != 0 {
@@ -67,6 +68,7 @@ func TestRunJoinInstallsWhenNotRunning(t *testing.T) {
 	if !installed {
 		t.Fatal("expected k0s install to run when not already running")
 	}
+	assertAgentInstalled(t, root, dataDir, executable)
 }
 
 func controlPlaneJoinToken(t *testing.T) string {
@@ -92,7 +94,8 @@ func TestRunJoinRejectsControlPlaneWithoutConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
+	executable := fakeExecutable(t)
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root, Executable: executable}
 	var out, errOut bytes.Buffer
 	code := RunJoin(context.Background(), []string{"--token", token, "--data-dir", dataDir, "--k0s-bin", "/usr/local/bin/k0s"}, deps, &out, &errOut)
 	if code != 1 {
@@ -120,7 +123,8 @@ func TestRunJoinControlPlaneEnablesWorkerWithoutWorkloadRole(t *testing.T) {
 		KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: dataDir, DisableComponents: k0s.DefaultDisabledComponents,
 	})
 	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
-	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
+	executable := fakeExecutable(t)
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root, Executable: executable}
 	var out, errOut bytes.Buffer
 	code := RunJoin(context.Background(), []string{"--token", controlPlaneJoinToken(t), "--data-dir", dataDir, "--k0s-bin", "/usr/local/bin/k0s"}, deps, &out, &errOut)
 	if code != 0 {
@@ -169,7 +173,8 @@ func TestRunJoinFromBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
+	executable := fakeExecutable(t)
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root, Executable: executable}
 	var out, errOut bytes.Buffer
 	code := RunJoin(context.Background(), []string{"--token", token, "--data-dir", dataDir, "--k0s-bin", k0sBin, "--bundle", bundlePath, "--work-dir", workDir}, deps, &out, &errOut)
 	if code != 0 {
@@ -207,7 +212,8 @@ func TestRunJoinSkipsInstallWhenAlreadyRunning(t *testing.T) {
 	root, e := fakeHost(t)
 	dataDir := filepath.Join(root, "var", "lib", "k0s")
 	e.Responses["/usr/local/bin/k0s status --data-dir "+dataDir] = ""
-	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root}
+	executable := fakeExecutable(t)
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root, Executable: executable}
 	var out, errOut bytes.Buffer
 	code := RunJoin(context.Background(), []string{"--token", joinToken(t), "--data-dir", dataDir, "--k0s-bin", "/usr/local/bin/k0s"}, deps, &out, &errOut)
 	if code != 0 {
