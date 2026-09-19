@@ -2,6 +2,7 @@ package hostconfig
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -44,10 +45,14 @@ func modulesStep(ctx context.Context, deps Deps, spec v1alpha1.HostConfigSpec) (
 	if err := writeFile(filepath.Join(deps.Root, "etc", "modules-load.d", "bedrock.conf"), content); err != nil {
 		return "", err
 	}
+	var failures []string
 	for _, module := range spec.Modules {
 		if _, err := deps.Exec.Run(ctx, "modprobe", module); err != nil {
-			return "", err
+			failures = append(failures, module+": "+err.Error())
 		}
+	}
+	if len(failures) > 0 {
+		return "", errors.New(strings.Join(failures, "; "))
 	}
 	return "", nil
 }

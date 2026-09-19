@@ -91,6 +91,30 @@ func TestApplyContinuesAfterFailure(t *testing.T) {
 	}
 }
 
+func TestApplyTriesEveryModule(t *testing.T) {
+	root := t.TempDir()
+	exec := &host.FakeExec{
+		Responses:        map[string]string{"modprobe kvm": "", "modprobe vhost_net": ""},
+		ResponsePrefixes: map[string]string{"sysctl -p ": ""},
+		Errors:           map[string]error{"modprobe kvm": &host.ExitError{Code: 1}, "modprobe vhost_net": &host.ExitError{Code: 1}},
+	}
+	spec := v1alpha1.HostConfigSpec{Modules: []string{"kvm", "vhost_net"}, Sysctls: map[string]string{"a": "1"}}
+	steps := Apply(context.Background(), Deps{Exec: exec, Root: root, Packages: pkgmgr.Manager{Exec: exec, Family: "apt", Root: root}}, spec)
+	modules := stateOf(steps, "modules")
+	if modules.State != "Failed" {
+		t.Fatalf("modules %+v", modules)
+	}
+	if modules.Message != "kvm: exit status 1; vhost_net: exit status 1" {
+		t.Fatalf("message %q", modules.Message)
+	}
+	if len(exec.Calls) < 2 || exec.Calls[0] != "modprobe kvm" || exec.Calls[1] != "modprobe vhost_net" {
+		t.Fatalf("calls %v", exec.Calls)
+	}
+	if stateOf(steps, "sysctls").State != "Applied" {
+		t.Fatalf("sysctls must still run: %+v", stateOf(steps, "sysctls"))
+	}
+}
+
 func TestApplyDisablesUnits(t *testing.T) {
 	root := t.TempDir()
 	exec := &host.FakeExec{Responses: map[string]string{"systemctl daemon-reload": "", "systemctl disable --now old.service": ""}, ResponsePrefixes: map[string]string{"sysctl -p ": ""}}

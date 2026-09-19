@@ -301,7 +301,7 @@ func TestTickReportsFirstFailedStep(t *testing.T) {
 		t.Fatal(err)
 	}
 	cond := requireCondition(t, "node-failing", v1alpha1.ConditionManagementApplied)
-	if cond.Status != metav1.ConditionFalse || cond.Reason != "StepFailed" || cond.Message != "modules: module not found" {
+	if cond.Status != metav1.ConditionFalse || cond.Reason != "StepFailed" || cond.Message != "modules: dummy: module not found" {
 		t.Fatalf("condition %+v", cond)
 	}
 }
