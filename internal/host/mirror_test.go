@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
 )
 
 func TestMirrorFiles(t *testing.T) {
@@ -37,5 +39,18 @@ func TestEnsureMirrorWritesFiles(t *testing.T) {
 	}
 	if err := EnsureMirror(root, "https://m.example"); err != nil {
 		t.Fatal("second run must succeed")
+	}
+}
+
+func TestMirrorFilesForWritesOnePerRegistry(t *testing.T) {
+	files := MirrorFilesFor([]v1alpha1.MirrorSpec{{Registry: "_default", Endpoint: "https://m.example"}, {Registry: "quay.io", Endpoint: "https://q.example"}})
+	if len(files) != 3 {
+		t.Fatalf("files %v", files)
+	}
+	if !strings.Contains(files["certs.d/quay.io/hosts.toml"], `[host."https://q.example"]`) {
+		t.Fatalf("quay hosts %q", files["certs.d/quay.io/hosts.toml"])
+	}
+	if MirrorFiles("https://m.example")["certs.d/_default/hosts.toml"] != files["certs.d/_default/hosts.toml"] {
+		t.Fatal("single-mirror form must match the _default entry")
 	}
 }
