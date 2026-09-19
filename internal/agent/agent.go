@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -31,14 +32,15 @@ type Deps struct {
 }
 
 func Run(ctx context.Context, c client.WithWatch, deps Deps) error {
-	events, stop, err := watchOwn(ctx, c, deps.Node)
-	if err != nil {
-		return err
-	}
-	defer stop()
 	ticker := time.NewTicker(deps.Interval)
 	defer ticker.Stop()
+	var events <-chan struct{}
+	stop := func() {}
+	defer func() { stop() }()
 	for {
+		if events == nil {
+			events, stop = ensureWatch(ctx, c, deps.Node)
+		}
 		if err := Tick(ctx, c, deps); err != nil {
 			fmt.Fprintf(os.Stderr, "agent: %v\n", err)
 		}
@@ -46,9 +48,22 @@ func Run(ctx context.Context, c client.WithWatch, deps Deps) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-		case <-events:
+		case _, open := <-events:
+			if !open {
+				stop()
+				events, stop = nil, func() {}
+			}
 		}
 	}
+}
+
+func ensureWatch(ctx context.Context, c client.WithWatch, node string) (<-chan struct{}, func()) {
+	events, stop, err := watchOwn(ctx, c, node)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "agent: %v\n", err)
+		return nil, func() {}
+	}
+	return events, stop
 }
 
 func watchOwn(ctx context.Context, c client.WithWatch, name string) (<-chan struct{}, func(), error) {
@@ -63,7 +78,10 @@ func watchOwn(ctx context.Context, c client.WithWatch, name string) (<-chan stru
 		return nil, nil, err
 	}
 	events := make(chan struct{}, 1)
+	var forwarding sync.WaitGroup
+	forwarding.Add(2)
 	forward := func(in <-chan watch.Event) {
+		defer forwarding.Done()
 		for range in {
 			select {
 			case events <- struct{}{}:
@@ -73,6 +91,10 @@ func watchOwn(ctx context.Context, c client.WithWatch, name string) (<-chan stru
 	}
 	go forward(hosts.ResultChan())
 	go forward(configs.ResultChan())
+	go func() {
+		forwarding.Wait()
+		close(events)
+	}()
 	return events, func() { hosts.Stop(); configs.Stop() }, nil
 }
 

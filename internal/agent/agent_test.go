@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
@@ -317,5 +319,54 @@ func TestTickReturnsInventoryErrorAndStillWritesStatus(t *testing.T) {
 	cond := requireCondition(t, "node-noinv", v1alpha1.ConditionManagementApplied)
 	if cond.Status != metav1.ConditionFalse || cond.Reason != "ManagementDisabled" {
 		t.Fatalf("condition %+v", cond)
+	}
+}
+
+type flakyWatchClient struct {
+	client.WithWatch
+	failures  *atomic.Int32
+	successes *atomic.Int32
+}
+
+func (f flakyWatchClient) Watch(ctx context.Context, list client.ObjectList, opts ...client.ListOption) (watch.Interface, error) {
+	if f.failures.Add(-1) >= 0 {
+		return nil, errors.New("no matching kind")
+	}
+	w, err := f.WithWatch.Watch(ctx, list, opts...)
+	if err == nil {
+		f.successes.Add(1)
+	}
+	return w, err
+}
+
+func TestRunRetriesTheWatchUntilItSucceeds(t *testing.T) {
+	createHost(t, "node-a", false, "")
+	watching, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var failures, successes atomic.Int32
+	failures.Store(2)
+	deps := newDeps(&host.FakeExec{}, time.Now())
+	deps.Interval = 20 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, flakyWatchClient{WithWatch: watching, failures: &failures, successes: &successes}, deps)
+	}()
+	deadline := time.After(5 * time.Second)
+	for successes.Load() < 2 {
+		select {
+		case err := <-done:
+			t.Fatalf("Run returned before the watch succeeded: %v", err)
+		case <-deadline:
+			t.Fatalf("watch never succeeded, successes %d", successes.Load())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
