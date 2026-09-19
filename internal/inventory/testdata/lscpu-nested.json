@@ -1,0 +1,10 @@
+{"lscpu": [
+ {"field": "Architecture:", "data": "x86_64"},
+ {"field": "Vendor ID:", "data": "AuthenticAMD", "children": [
+   {"field": "Model name:", "data": "AMD EPYC 7302P 16-Core Processor", "children": [
+     {"field": "Thread(s) per core:", "data": "2"},
+     {"field": "Core(s) per socket:", "data": "16"},
+     {"field": "Socket(s):", "data": "1"}
+   ]}
+ ]}
+]}

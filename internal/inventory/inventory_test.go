@@ -28,6 +28,26 @@ func TestParseLscpu(t *testing.T) {
 	}
 }
 
+func TestParseLscpuNested(t *testing.T) {
+	flat, err := ParseLscpu(fixture(t, "lscpu.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nested, err := ParseLscpu(fixture(t, "lscpu-nested.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nested != flat {
+		t.Fatalf("nested %+v flat %+v", nested, flat)
+	}
+}
+
+func TestParseLscpuFailsWithoutModel(t *testing.T) {
+	if _, err := ParseLscpu([]byte(`{"lscpu": [{"field": "Socket(s):", "data": "1"}]}`)); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestParseMeminfo(t *testing.T) {
 	got, err := ParseMeminfo("MemTotal:       65780032 kB\nMemFree:        1234 kB\n")
 	if err != nil || got != 65780032*1024 {

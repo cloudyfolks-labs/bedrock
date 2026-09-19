@@ -11,11 +11,22 @@ import (
 	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
 )
 
+type lscpuEntry struct {
+	Field    string       `json:"field"`
+	Data     string       `json:"data"`
+	Children []lscpuEntry `json:"children"`
+}
+
 type lscpuOutput struct {
-	Entries []struct {
-		Field string `json:"field"`
-		Data  string `json:"data"`
-	} `json:"lscpu"`
+	Entries []lscpuEntry `json:"lscpu"`
+}
+
+func lscpuFields(entries []lscpuEntry, fields map[string]string) map[string]string {
+	for _, entry := range entries {
+		fields[entry.Field] = entry.Data
+		lscpuFields(entry.Children, fields)
+	}
+	return fields
 }
 
 func ParseLscpu(raw []byte) (v1alpha1.CPUInfo, error) {
@@ -23,9 +34,9 @@ func ParseLscpu(raw []byte) (v1alpha1.CPUInfo, error) {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return v1alpha1.CPUInfo{}, fmt.Errorf("lscpu: %w", err)
 	}
-	fields := map[string]string{}
-	for _, entry := range out.Entries {
-		fields[entry.Field] = entry.Data
+	fields := lscpuFields(out.Entries, map[string]string{})
+	if fields["Model name:"] == "" {
+		return v1alpha1.CPUInfo{}, fmt.Errorf("lscpu: Model name not found")
 	}
 	perSocket := atoi(fields["Core(s) per socket:"])
 	perCore := atoi(fields["Thread(s) per core:"])
