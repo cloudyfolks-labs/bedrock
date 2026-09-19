@@ -34,24 +34,28 @@ type Deps struct {
 func Run(ctx context.Context, c client.WithWatch, deps Deps) error {
 	ticker := time.NewTicker(deps.Interval)
 	defer ticker.Stop()
-	var events <-chan struct{}
-	stop := func() {}
+	events, stop := ensureWatch(ctx, c, deps.Node)
 	defer func() { stop() }()
 	for {
-		if events == nil {
-			events, stop = ensureWatch(ctx, c, deps.Node)
-		}
 		if err := Tick(ctx, c, deps); err != nil {
 			fmt.Fprintf(os.Stderr, "agent: %v\n", err)
 		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-		case _, open := <-events:
-			if !open {
-				stop()
-				events, stop = nil, func() {}
+		for ready := false; !ready; {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				if events == nil {
+					events, stop = ensureWatch(ctx, c, deps.Node)
+				}
+				ready = true
+			case _, open := <-events:
+				if open {
+					ready = true
+				} else {
+					stop()
+					events, stop = nil, func() {}
+				}
 			}
 		}
 	}

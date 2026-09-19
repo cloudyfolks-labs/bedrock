@@ -370,3 +370,49 @@ func TestRunRetriesTheWatchUntilItSucceeds(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type closedResultWatch struct{}
+
+func (closedResultWatch) Stop() {}
+
+func (closedResultWatch) ResultChan() <-chan watch.Event {
+	events := make(chan watch.Event)
+	close(events)
+	return events
+}
+
+type closingWatchClient struct {
+	client.WithWatch
+	calls *atomic.Int32
+}
+
+func (c closingWatchClient) Watch(context.Context, client.ObjectList, ...client.ListOption) (watch.Interface, error) {
+	c.calls.Add(1)
+	return closedResultWatch{}, nil
+}
+
+func TestRunWaitsATickBeforeRewatching(t *testing.T) {
+	createHost(t, "node-a", false, "")
+	watching, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	deps := newDeps(&host.FakeExec{}, time.Now())
+	deps.Interval = 50 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, closingWatchClient{WithWatch: watching, calls: &calls}, deps) }()
+	time.Sleep(500 * time.Millisecond)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	got := calls.Load()
+	if got < 2 {
+		t.Fatalf("watch calls %d, the fake watch was never used", got)
+	}
+	if got > 24 {
+		t.Fatalf("watch calls %d, a closed watch must wait a tick before the next attempt", got)
+	}
+}
