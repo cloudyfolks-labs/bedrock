@@ -62,10 +62,11 @@ func sysctlsStep(ctx context.Context, deps Deps, spec v1alpha1.HostConfigSpec) (
 	for _, key := range keys {
 		b.WriteString(key + " = " + spec.Sysctls[key] + "\n")
 	}
-	if err := writeFile(filepath.Join(deps.Root, "etc", "sysctl.d", "90-bedrock.conf"), b.String()); err != nil {
+	path := filepath.Join(deps.Root, "etc", "sysctl.d", "90-bedrock.conf")
+	if err := writeFile(path, b.String()); err != nil {
 		return "", err
 	}
-	_, err := deps.Exec.Run(ctx, "sysctl", "--system")
+	_, err := deps.Exec.Run(ctx, "sysctl", "-p", path)
 	return "", err
 }
 

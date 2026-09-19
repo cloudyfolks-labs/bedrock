@@ -71,7 +71,7 @@ func TestTickAppliesHostConfigWhenManaged(t *testing.T) {
 	}
 	t.Cleanup(func() { k8sClient.Delete(context.Background(), hc) })
 	root := t.TempDir()
-	exec := &host.FakeExec{Responses: map[string]string{"sysctl --system": ""}}
+	exec := &host.FakeExec{ResponsePrefixes: map[string]string{"sysctl -p ": ""}}
 	deps := newDeps(exec, time.Now())
 	deps.Root = root
 	if err := Tick(context.Background(), k8sClient, deps); err != nil {
@@ -204,7 +204,7 @@ func backdateConditions(t *testing.T, name string, at time.Time) {
 
 func TestTickKeepsTransitionTimeUntilStatusChanges(t *testing.T) {
 	createHost(t, "node-stable", false, "")
-	exec := &host.FakeExec{Responses: map[string]string{"sysctl --system": ""}}
+	exec := &host.FakeExec{ResponsePrefixes: map[string]string{"sysctl -p ": ""}}
 	deps := newDeps(exec, time.Now())
 	deps.Node = "node-stable"
 	deps.Root = t.TempDir()
@@ -290,8 +290,9 @@ func TestTickReportsFirstFailedStep(t *testing.T) {
 	createHost(t, "node-failing", true, "")
 	createHostConfig(t, "node-failing", v1alpha1.HostConfigSpec{Modules: []string{"dummy"}})
 	exec := &host.FakeExec{
-		Responses: map[string]string{"sysctl --system": "", "modprobe dummy": ""},
-		Errors:    map[string]error{"modprobe dummy": errors.New("module not found")},
+		Responses:        map[string]string{"modprobe dummy": ""},
+		ResponsePrefixes: map[string]string{"sysctl -p ": ""},
+		Errors:           map[string]error{"modprobe dummy": errors.New("module not found")},
 	}
 	deps := newDeps(exec, time.Now())
 	deps.Node = "node-failing"

@@ -23,11 +23,10 @@ func stateOf(steps []v1alpha1.StepResult, name string) v1alpha1.StepResult {
 
 func TestApplyRunsEveryStep(t *testing.T) {
 	root := t.TempDir()
-	exec := &host.FakeExec{Responses: map[string]string{
+	exec := &host.FakeExec{ResponsePrefixes: map[string]string{"sysctl -p ": ""}, Responses: map[string]string{
 		"dnf install -y qemu-kvm":             "",
 		"modprobe kvm":                        "",
 		"modprobe vhost_net":                  "",
-		"sysctl --system":                     "",
 		"systemctl daemon-reload":             "",
 		"systemctl enable --now demo.service": "",
 	}}
@@ -75,8 +74,9 @@ func TestApplyRunsEveryStep(t *testing.T) {
 func TestApplyContinuesAfterFailure(t *testing.T) {
 	root := t.TempDir()
 	exec := &host.FakeExec{
-		Responses: map[string]string{"modprobe missing": "", "sysctl --system": ""},
-		Errors:    map[string]error{"modprobe missing": &host.ExitError{Code: 1}},
+		Responses:        map[string]string{"modprobe missing": ""},
+		ResponsePrefixes: map[string]string{"sysctl -p ": ""},
+		Errors:           map[string]error{"modprobe missing": &host.ExitError{Code: 1}},
 	}
 	spec := v1alpha1.HostConfigSpec{Modules: []string{"missing"}, Sysctls: map[string]string{"a": "1"}}
 	steps := Apply(context.Background(), Deps{Exec: exec, Root: root, Packages: pkgmgr.Manager{Exec: exec, Family: "apt", Root: root}}, spec)
@@ -93,7 +93,7 @@ func TestApplyContinuesAfterFailure(t *testing.T) {
 
 func TestApplyDisablesUnits(t *testing.T) {
 	root := t.TempDir()
-	exec := &host.FakeExec{Responses: map[string]string{"systemctl daemon-reload": "", "systemctl disable --now old.service": "", "sysctl --system": ""}}
+	exec := &host.FakeExec{Responses: map[string]string{"systemctl daemon-reload": "", "systemctl disable --now old.service": ""}, ResponsePrefixes: map[string]string{"sysctl -p ": ""}}
 	steps := Apply(context.Background(), Deps{Exec: exec, Root: root, Packages: pkgmgr.Manager{Exec: exec, Family: "apt", Root: root}}, v1alpha1.HostConfigSpec{Units: []v1alpha1.UnitSpec{{Name: "old.service", Content: "[Unit]\n", Enabled: false}}})
 	if stateOf(steps, "units").State != "Applied" {
 		t.Fatalf("units %+v", stateOf(steps, "units"))
