@@ -16,6 +16,7 @@ type Token struct {
 	K0sVersion   string            `json:"k0sVersion"`
 	K0sChecksums map[string]string `json:"k0sChecksums"`
 	SupportedOS  []string          `json:"supportedOS"`
+	Mirror       string            `json:"mirror,omitempty"`
 }
 
 func EncodeToken(t Token) (string, error) {

@@ -104,6 +104,13 @@ func RunJoin(ctx context.Context, args []string, deps InitDeps, stdout, stderr i
 		}
 	}
 
+	if token.Mirror != "" {
+		step(stdout, "registry mirror %s", token.Mirror)
+		if err := host.EnsureMirror(deps.Root, token.Mirror); err != nil {
+			return fail(stderr, err)
+		}
+	}
+
 	tokenPath := filepath.Join(deps.Root, "etc", "k0s", "join-token")
 	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o755); err != nil {
 		return fail(stderr, err)

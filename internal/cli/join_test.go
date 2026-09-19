@@ -225,3 +225,33 @@ func TestRunJoinSkipsInstallWhenAlreadyRunning(t *testing.T) {
 		}
 	}
 }
+
+func TestRunJoinWritesMirror(t *testing.T) {
+	root, e := fakeHost(t)
+	dataDir := filepath.Join(root, "var", "lib", "k0s")
+	e.Errors["/usr/local/bin/k0s status --data-dir "+dataDir] = &host.ExitError{Code: 1}
+	tokenPath := filepath.Join(root, "etc", "k0s", "join-token")
+	installArgs := k0s.InstallArgs(k0s.InstallOptions{Role: "worker", Force: true, TokenFile: tokenPath, Labels: roles.Labels([]string{"workload"}), KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: dataDir})
+	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
+	token, err := k0s.EncodeToken(k0s.Token{
+		Version: "v0.1.0-test", Roles: []string{"workload"}, K0sToken: "tok",
+		VIP: "10.0.10.10", K0sVersion: "1.36.3+k0s.0", SupportedOS: []string{"ubuntu-24.04"},
+		Mirror: "https://m.example",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := InitDeps{Exec: e, Uid: 0, FreeBytes: func(string) (uint64, error) { return 100 << 30, nil }, Root: root, Executable: fakeExecutable(t)}
+	var out, errOut bytes.Buffer
+	code := RunJoin(context.Background(), []string{"--token", token, "--data-dir", dataDir, "--k0s-bin", "/usr/local/bin/k0s"}, deps, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out.String(), errOut.String())
+	}
+	got, err := os.ReadFile(filepath.Join(root, "etc", "k0s", "containerd.d", "certs.d", "_default", "hosts.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "https://m.example") {
+		t.Fatalf("hosts.toml %q", got)
+	}
+}

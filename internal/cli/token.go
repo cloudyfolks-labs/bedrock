@@ -83,5 +83,5 @@ func buildToken(ctx context.Context, c client.Client, k0sClient k0s.Client, node
 	if err != nil {
 		return k0s.Token{}, err
 	}
-	return k0s.Token{Version: rel.Spec.Version, Roles: nodeRoles, K0sToken: k0sToken, K0sConfig: k0sConfig, VIP: cluster.Spec.API.VIP, Image: rel.Spec.Image, K0sVersion: rel.Spec.K0sVersion, K0sChecksums: rel.Spec.K0sChecksums, SupportedOS: rel.Spec.SupportedOS}, nil
+	return k0s.Token{Version: rel.Spec.Version, Roles: nodeRoles, K0sToken: k0sToken, K0sConfig: k0sConfig, VIP: cluster.Spec.API.VIP, Image: rel.Spec.Image, K0sVersion: rel.Spec.K0sVersion, K0sChecksums: rel.Spec.K0sChecksums, SupportedOS: rel.Spec.SupportedOS, Mirror: cluster.Spec.Registry.Mirror}, nil
 }
