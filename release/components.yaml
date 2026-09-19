@@ -41,6 +41,12 @@ components:
     version: 3.13.1
     namespace: kube-system
     values: release/values/metrics-server.yaml
+  - name: kured
+    order: 80
+    chart: charts/kured
+    version: 6.1.0
+    namespace: kube-system
+    values: release/values/kured.yaml
   - name: bedrock
     order: 90
     dirs: [manifests/90-bedrock]

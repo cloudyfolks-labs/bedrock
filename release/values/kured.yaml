@@ -1,0 +1,8 @@
+configuration:
+  rebootSentinel: /var/run/reboot-required
+  period: 5m
+  annotateNodes: true
+nodeSelector:
+  bedrock.cloudyfolks.io/managed: "true"
+tolerations:
+  - operator: Exists
