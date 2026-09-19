@@ -3,6 +3,7 @@ configuration:
   period: 5m
   annotateNodes: true
 nodeSelector:
+  kubernetes.io/os: linux
   bedrock.cloudyfolks.io/managed: "true"
 tolerations:
   - operator: Exists
