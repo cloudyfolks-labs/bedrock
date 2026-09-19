@@ -135,6 +135,47 @@ func TestTickRunsSecurityUpdateInWindow(t *testing.T) {
 	}
 }
 
+func TestTickReportsUpdateFailure(t *testing.T) {
+	createHost(t, "node-update", true, "Sat 02:00-05:00")
+	root := t.TempDir()
+	updateErr := errors.New("apt lock held")
+	exec := &host.FakeExec{Responses: map[string]string{"apt-get update": ""}, Errors: map[string]error{"apt-get update": updateErr}}
+	saturday := time.Date(2026, time.September, 12, 3, 0, 0, 0, time.Local)
+	deps := newDeps(exec, saturday)
+	deps.Node = "node-update"
+	deps.Root = root
+	deps.Packages = pkgmgr.Manager{Exec: exec, Family: "apt", Root: root}
+	if err := Tick(context.Background(), k8sClient, deps); err != nil {
+		t.Fatal(err)
+	}
+	cond := requireCondition(t, "node-update", v1alpha1.ConditionRebootPending)
+	if cond.Status != metav1.ConditionFalse || cond.Reason != "UpdateFailed" || cond.Message != updateErr.Error() {
+		t.Fatalf("condition %+v", cond)
+	}
+}
+
+func TestTickReportsRebootProbeFailure(t *testing.T) {
+	createHost(t, "node-probe", true, "Sat 02:00-05:00")
+	root := t.TempDir()
+	probeErr := &host.ExitError{Code: 3}
+	exec := &host.FakeExec{
+		Responses: map[string]string{"dnf upgrade -y --security": "", "needs-restarting -r": ""},
+		Errors:    map[string]error{"needs-restarting -r": probeErr},
+	}
+	saturday := time.Date(2026, time.September, 12, 3, 0, 0, 0, time.Local)
+	deps := newDeps(exec, saturday)
+	deps.Node = "node-probe"
+	deps.Root = root
+	deps.Packages = pkgmgr.Manager{Exec: exec, Family: "dnf", Root: root}
+	if err := Tick(context.Background(), k8sClient, deps); err != nil {
+		t.Fatal(err)
+	}
+	cond := requireCondition(t, "node-probe", v1alpha1.ConditionRebootPending)
+	if cond.Status != metav1.ConditionFalse || cond.Reason != "ProbeFailed" || cond.Message != probeErr.Error() {
+		t.Fatalf("condition %+v", cond)
+	}
+}
+
 func TestTickSkipsUpdateOutsideWindow(t *testing.T) {
 	createHost(t, "node-a", true, "Sat 02:00-05:00")
 	exec := &host.FakeExec{}
