@@ -30,7 +30,7 @@ type agentOptions struct {
 	interval   time.Duration
 }
 
-type AgentDeps struct {
+type agentDeps struct {
 	Exec host.Exec
 	OSID string
 	Load func(path string) (client.WithWatch, time.Time, error)
@@ -69,24 +69,24 @@ func agentCommand(args []string, _, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	deps := AgentDeps{
+	deps := agentDeps{
 		Exec: host.RealExec{},
 		OSID: id,
 		Load: func(path string) (client.WithWatch, time.Time, error) { return agent.LoadClient(path, scheme) },
 		Run:  agent.Run,
 	}
-	if err := RunAgent(ctx, o, deps, stderr); err != nil {
+	if err := runAgent(ctx, o, deps, stderr); err != nil {
 		return fail(stderr, err)
 	}
 	return 0
 }
 
-func RunAgent(ctx context.Context, o agentOptions, deps AgentDeps, stderr io.Writer) error {
+func runAgent(ctx context.Context, o agentOptions, deps agentDeps, stderr io.Writer) error {
 	family, err := pkgmgr.Detect(deps.OSID)
 	if err != nil {
 		fmt.Fprintf(stderr, "agent: %v, package steps will fail\n", err)
 	}
-	agentDeps := agent.Deps{
+	loopDeps := agent.Deps{
 		Exec:      deps.Exec,
 		Root:      o.root,
 		Node:      o.node,
@@ -97,7 +97,7 @@ func RunAgent(ctx context.Context, o agentOptions, deps AgentDeps, stderr io.Wri
 		Packages:  pkgmgr.Manager{Exec: deps.Exec, Family: family, Root: o.root},
 	}
 	for {
-		changed, err := runUntilKubeconfigChanges(ctx, o, deps, agentDeps, stderr)
+		changed, err := runUntilKubeconfigChanges(ctx, o, deps, loopDeps, stderr)
 		if err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func RunAgent(ctx context.Context, o agentOptions, deps AgentDeps, stderr io.Wri
 	}
 }
 
-func runUntilKubeconfigChanges(ctx context.Context, o agentOptions, deps AgentDeps, agentDeps agent.Deps, stderr io.Writer) (bool, error) {
+func runUntilKubeconfigChanges(ctx context.Context, o agentOptions, deps agentDeps, loopDeps agent.Deps, stderr io.Writer) (bool, error) {
 	c, loaded, err := deps.Load(o.kubeconfig)
 	if err != nil {
 		return false, err
@@ -115,7 +115,7 @@ func runUntilKubeconfigChanges(ctx context.Context, o agentOptions, deps AgentDe
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- deps.Run(runCtx, c, agentDeps) }()
+	go func() { done <- deps.Run(runCtx, c, loopDeps) }()
 	ticker := time.NewTicker(o.interval)
 	defer ticker.Stop()
 	for {
@@ -127,6 +127,9 @@ func runUntilKubeconfigChanges(ctx context.Context, o agentOptions, deps AgentDe
 		case err := <-done:
 			if err != nil {
 				return false, err
+			}
+			if ctx.Err() != nil {
+				return false, nil
 			}
 			return false, errors.New("agent loop exited")
 		case <-ticker.C:

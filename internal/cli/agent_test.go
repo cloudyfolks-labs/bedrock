@@ -22,7 +22,7 @@ func TestRunAgentReloadsClientWhenKubeconfigChanges(t *testing.T) {
 	}
 	loads := 0
 	runs := make(chan struct{}, 4)
-	deps := AgentDeps{
+	deps := agentDeps{
 		Exec: &host.FakeExec{},
 		OSID: "ubuntu",
 		Load: func(string) (client.WithWatch, time.Time, error) {
@@ -42,7 +42,7 @@ func TestRunAgentReloadsClientWhenKubeconfigChanges(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- RunAgent(ctx, agentOptions{kubeconfig: path, node: "n", root: "/", interval: 20 * time.Millisecond}, deps, &bytes.Buffer{})
+		done <- runAgent(ctx, agentOptions{kubeconfig: path, node: "n", root: "/", interval: 20 * time.Millisecond}, deps, &bytes.Buffer{})
 	}()
 	<-runs
 	time.Sleep(30 * time.Millisecond)
@@ -68,8 +68,8 @@ func TestRunAgentReloadsClientWhenKubeconfigChanges(t *testing.T) {
 }
 
 func TestRunAgentFailsWhenKubeconfigMissing(t *testing.T) {
-	deps := AgentDeps{Exec: &host.FakeExec{}, OSID: "ubuntu", Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, errors.New("missing") }}
-	if err := RunAgent(context.Background(), agentOptions{kubeconfig: "/nonexistent", node: "n", root: "/", interval: time.Second}, deps, &bytes.Buffer{}); err == nil {
+	deps := agentDeps{Exec: &host.FakeExec{}, OSID: "ubuntu", Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, errors.New("missing") }}
+	if err := runAgent(context.Background(), agentOptions{kubeconfig: "/nonexistent", node: "n", root: "/", interval: time.Second}, deps, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected error")
 	}
 }
@@ -81,7 +81,7 @@ func TestRunAgentReportsUnknownPackageFamily(t *testing.T) {
 	}
 	family := "unread"
 	var log bytes.Buffer
-	deps := AgentDeps{
+	deps := agentDeps{
 		Exec: &host.FakeExec{},
 		OSID: "plan9",
 		Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, nil },
@@ -90,7 +90,7 @@ func TestRunAgentReportsUnknownPackageFamily(t *testing.T) {
 			return errors.New("stop")
 		},
 	}
-	if err := RunAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Second}, deps, &log); err == nil {
+	if err := runAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Second}, deps, &log); err == nil {
 		t.Fatal("expected error")
 	}
 	if family != "" {
@@ -106,13 +106,13 @@ func TestRunAgentExitsWhenTheLoopReturns(t *testing.T) {
 	if err := os.WriteFile(path, []byte("a"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	deps := AgentDeps{
+	deps := agentDeps{
 		Exec: &host.FakeExec{},
 		OSID: "ubuntu",
 		Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, nil },
 		Run:  func(context.Context, client.WithWatch, agent.Deps) error { return nil },
 	}
-	err := RunAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Hour}, deps, &bytes.Buffer{})
+	err := runAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Hour}, deps, &bytes.Buffer{})
 	if err == nil || err.Error() != "agent loop exited" {
 		t.Fatalf("err %v", err)
 	}
@@ -124,13 +124,31 @@ func TestRunAgentReturnsTheLoopError(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := errors.New("watch failed")
-	deps := AgentDeps{
+	deps := agentDeps{
 		Exec: &host.FakeExec{},
 		OSID: "ubuntu",
 		Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, nil },
 		Run:  func(context.Context, client.WithWatch, agent.Deps) error { return want },
 	}
-	if err := RunAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Hour}, deps, &bytes.Buffer{}); !errors.Is(err, want) {
+	if err := runAgent(context.Background(), agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Hour}, deps, &bytes.Buffer{}); !errors.Is(err, want) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestRunAgentExitsCleanWhenTheContextIsCancelled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kubelet.conf")
+	if err := os.WriteFile(path, []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deps := agentDeps{
+		Exec: &host.FakeExec{},
+		OSID: "ubuntu",
+		Load: func(string) (client.WithWatch, time.Time, error) { return nil, time.Time{}, nil },
+		Run:  func(context.Context, client.WithWatch, agent.Deps) error { return nil },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := runAgent(ctx, agentOptions{kubeconfig: path, node: "n", root: "/", interval: time.Hour}, deps, &bytes.Buffer{}); err != nil {
 		t.Fatalf("err %v", err)
 	}
 }
