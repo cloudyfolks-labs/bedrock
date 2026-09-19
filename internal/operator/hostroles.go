@@ -3,9 +3,11 @@ package operator
 import (
 	"maps"
 	"slices"
+	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
 	"github.com/cloudyfolks-labs/bedrock/internal/roles"
 )
 
@@ -15,7 +17,7 @@ func RoleLabels(names []string) map[string]string { return roles.Labels(names) }
 
 func RoleTaints(names []string) []corev1.Taint { return roles.Taints(names) }
 
-func ApplyRoles(node *corev1.Node, roleNames []string) bool {
+func ApplyRoles(node *corev1.Node, roleNames []string, managed bool) bool {
 	desiredLabels := maps.Clone(node.Labels)
 	if desiredLabels == nil {
 		desiredLabels = map[string]string{}
@@ -24,6 +26,7 @@ func ApplyRoles(node *corev1.Node, roleNames []string) bool {
 		delete(desiredLabels, key)
 	}
 	maps.Copy(desiredLabels, RoleLabels(roleNames))
+	desiredLabels[v1alpha1.LabelManaged] = strconv.FormatBool(managed)
 
 	desiredTaints := slices.DeleteFunc(slices.Clone(node.Spec.Taints), func(t corev1.Taint) bool { return t.Key == roles.NoWorkloadTaint })
 	desiredTaints = append(desiredTaints, RoleTaints(roleNames)...)

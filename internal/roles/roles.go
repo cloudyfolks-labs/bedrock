@@ -16,7 +16,7 @@ const (
 )
 
 func ManagedLabelKeys() []string {
-	keys := []string{FabricGWLabel, FabricRoleLabel}
+	keys := []string{FabricGWLabel, FabricRoleLabel, v1alpha1.LabelManaged}
 	for _, role := range v1alpha1.AllRoles() {
 		keys = append(keys, LabelPrefix+role)
 	}

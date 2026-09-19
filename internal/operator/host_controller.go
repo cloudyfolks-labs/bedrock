@@ -40,13 +40,32 @@ func (r *HostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 	patch := client.MergeFromWithOptions(node.DeepCopy(), client.MergeFromWithOptimisticLock{})
-	if ApplyRoles(&node, host.Spec.Roles) {
+	if ApplyRoles(&node, host.Spec.Roles, host.Spec.Management.Enabled) {
 		if err := r.Client.Patch(ctx, &node, patch); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
+	cluster, err := r.cluster(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.ensureHostConfig(ctx, host, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
 	next := hostStatus(host, &node, metav1.ConditionTrue, "RolesApplied", "")
 	return ctrl.Result{}, r.updateStatus(ctx, host, next)
+}
+
+func (r *HostReconciler) allHostRequests(ctx context.Context) []reconcile.Request {
+	var hosts v1alpha1.HostList
+	if err := r.Client.List(ctx, &hosts); err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(hosts.Items))
+	for _, host := range hosts.Items {
+		requests = append(requests, reconcile.Request{NamespacedName: types.NamespacedName{Name: host.Name}})
+	}
+	return requests
 }
 
 func (r *HostReconciler) createHostFromNode(ctx context.Context, name string) error {
@@ -97,8 +116,12 @@ func hostStatusEqual(a, b v1alpha1.HostStatus) bool {
 func (r *HostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Host{}).
+		Owns(&v1alpha1.HostConfig{}).
 		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
 			return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetName()}}}
+		})).
+		Watches(&v1alpha1.Cluster{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
+			return r.allHostRequests(ctx)
 		})).
 		Complete(r)
 }

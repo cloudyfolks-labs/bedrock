@@ -34,7 +34,7 @@ func TestRoleTaintsWithoutWorkload(t *testing.T) {
 func TestApplyRolesIsIdempotentAndClears(t *testing.T) {
 	node := &corev1.Node{}
 	node.Labels = map[string]string{"kubernetes.io/hostname": "n1", "bedrock.cloudyfolks.io/role-ceph-osd": "true"}
-	changed := ApplyRoles(node, []string{v1alpha1.RoleWorkload})
+	changed := ApplyRoles(node, []string{v1alpha1.RoleWorkload}, false)
 	if !changed {
 		t.Fatal("first apply must report a change")
 	}
@@ -44,7 +44,7 @@ func TestApplyRolesIsIdempotentAndClears(t *testing.T) {
 	if node.Labels["kubernetes.io/hostname"] != "n1" {
 		t.Fatal("foreign labels must be kept")
 	}
-	if ApplyRoles(node, []string{v1alpha1.RoleWorkload}) {
+	if ApplyRoles(node, []string{v1alpha1.RoleWorkload}, false) {
 		t.Fatal("second apply must report no change")
 	}
 }
@@ -55,13 +55,13 @@ func TestApplyRolesTaintOrderIsIgnored(t *testing.T) {
 		{Key: "dedicated", Value: "gpu", Effect: corev1.TaintEffectNoSchedule},
 		{Key: "bedrock.cloudyfolks.io/no-workload", Effect: corev1.TaintEffectNoSchedule},
 	}
-	ApplyRoles(node, []string{v1alpha1.RoleControlPlane})
+	ApplyRoles(node, []string{v1alpha1.RoleControlPlane}, false)
 
 	node.Spec.Taints = []corev1.Taint{
 		{Key: "bedrock.cloudyfolks.io/no-workload", Effect: corev1.TaintEffectNoSchedule},
 		{Key: "dedicated", Value: "gpu", Effect: corev1.TaintEffectNoSchedule},
 	}
-	if ApplyRoles(node, []string{v1alpha1.RoleControlPlane}) {
+	if ApplyRoles(node, []string{v1alpha1.RoleControlPlane}, false) {
 		t.Fatal("reordered taints must not report a change")
 	}
 }
