@@ -33,6 +33,8 @@ dump() {
     kubectl -n kube-system logs daemonset/kube-vip --tail=100 || true
     echo "--- cluster"
     kubectl get cluster,release,host,setting -o yaml || true
+    echo "--- agent log"
+    journalctl -u bedrock-agent.service --no-pager -n 100 || true
     echo "--- operator log"
     kubectl -n bedrock-system logs deploy/bedrock-operator --tail=300 || true
     echo "--- fabric logs"
@@ -93,6 +95,26 @@ if kubectl get pods -A -o jsonpath='{range .items[*]}{.status.containerStatuses[
   exit 1
 fi
 kubectl -n cert-manager rollout status deployment/cert-manager --timeout=300s
+systemctl is-active bedrock-agent.service
+node=$(hostname | tr '[:upper:]' '[:lower:]')
+for i in $(seq 1 30); do
+  cores=$(kubectl get host "$node" -o jsonpath='{.status.inventory.cpu.cores}')
+  [ -n "$cores" ] && [ "$cores" -gt 0 ] && break
+  sleep 5
+done
+test "$cores" -gt 0
+test "$(kubectl get host "$node" -o jsonpath='{.status.inventory.memoryBytes}')" -gt 0
+test "$(kubectl get host "$node" -o jsonpath='{.status.inventory.disks[0].path}')" != ""
+kubectl get hostconfig "$node" -o jsonpath='{.spec.modules}' | grep -q br_netfilter
+kubectl get node "$node" -o jsonpath='{.metadata.labels.bedrock\.cloudyfolks\.io/managed}' | grep -qx false
+! kubectl --as=system:node:other --as-group=system:nodes patch host "$node" --subresource=status --type=merge -p '{"status":{"kubernetesVersion":"x"}}' || exit 1
+kubectl patch host "$node" --type=merge -p '{"spec":{"management":{"enabled":true}}}'
+kubectl wait --for=condition=ManagementApplied host/"$node" --timeout=180s
+test -f /etc/sysctl.d/90-bedrock.conf
+grep -q 'net.ipv4.ip_forward = 1' /etc/sysctl.d/90-bedrock.conf
+kubectl get node "$node" -o jsonpath='{.metadata.labels.bedrock\.cloudyfolks\.io/managed}' | grep -qx true
+kubectl -n kube-system rollout status daemonset/kured --timeout=180s
+kubectl patch host "$node" --type=merge -p '{"spec":{"management":{"enabled":false}}}'
 kubectl get host "$(hostname | tr '[:upper:]' '[:lower:]')" -o jsonpath='{.spec.roles}' | grep -q ceph-osd
 kubectl get setting storage.replicas -o jsonpath='{.spec.value}' | grep -qx 1
 token=$(bin/bedrock token create --roles workload --expiry 10m)
