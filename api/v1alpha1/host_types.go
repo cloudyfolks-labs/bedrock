@@ -18,6 +18,12 @@ const (
 	ConditionRebootPending     = "RebootPending"
 )
 
+const (
+	LabelManaged         = "bedrock.cloudyfolks.io/managed"
+	AgentFieldManager    = "bedrock-agent"
+	OperatorFieldManager = "bedrock-operator"
+)
+
 func AllRoles() []string {
 	return []string{RoleControlPlane, RoleCephOSD, RoleFabricGateway, RoleWorkload}
 }
@@ -139,6 +145,8 @@ type HostStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// +optional
+	// +listType=map
+	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// +optional
 	Inventory Inventory `json:"inventory,omitempty"`

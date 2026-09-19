@@ -1,0 +1,59 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bedrock-agent
+  labels:
+    bedrock.cloudyfolks.io/component: bedrock
+rules:
+  - apiGroups: [bedrock.cloudyfolks.io]
+    resources: [hosts, hostconfigs]
+    verbs: [get, list, watch]
+  - apiGroups: [bedrock.cloudyfolks.io]
+    resources: [hosts/status]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bedrock-agent
+  labels:
+    bedrock.cloudyfolks.io/component: bedrock
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bedrock-agent
+subjects:
+  - kind: Group
+    name: system:nodes
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: bedrock-agent-own-host
+  labels:
+    bedrock.cloudyfolks.io/component: bedrock
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [bedrock.cloudyfolks.io]
+        apiVersions: [v1alpha1]
+        operations: [UPDATE]
+        resources: [hosts/status]
+  matchConditions:
+    - name: node-identity
+      expression: "request.userInfo.username.startsWith('system:node:')"
+  validations:
+    - expression: "request.userInfo.username == 'system:node:' + object.metadata.name"
+      message: "a node may only update the status of its own Host"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: bedrock-agent-own-host
+  labels:
+    bedrock.cloudyfolks.io/component: bedrock
+spec:
+  policyName: bedrock-agent-own-host
+  validationActions: [Deny]

@@ -16,5 +16,6 @@ grep -q 'kind: CustomResourceDefinition' "$dir/manifests/00-crds/fabric-crds.yam
 grep -q 'name: cert-manager' "$dir/manifests/60-cert-manager/cert-manager.yaml"
 grep -q 'metrics-server' "$dir/manifests/70-monitoring/monitoring.yaml"
 grep -q 'name: bedrock-operator' "$dir/manifests/90-bedrock/bedrock.yaml"
+grep -q 'kind: ValidatingAdmissionPolicy' "$dir/manifests/90-bedrock/bedrock.yaml"
 ! grep -rq 'ghcr.io/cloudyfolks-labs/bedrock:dev' "$dir/manifests" || test "$(grep '^version:' "$dir/release.yaml")" = "version: dev"
 echo "check-release passed"
