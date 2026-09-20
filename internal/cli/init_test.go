@@ -187,6 +187,7 @@ func TestRunInitHappyPath(t *testing.T) {
 		Labels:            roles.Labels([]string{"control-plane", "ceph-osd", "fabric-gateway"}),
 		KubeletExtraArgs:  []string{"--node-status-update-frequency=4s"},
 		DataDir:           dataDir,
+		KubeletRootDir:    k0s.DefaultKubeletRootDir,
 		DisableComponents: k0s.DefaultDisabledComponents,
 	})
 	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""
@@ -479,6 +480,7 @@ func TestRunInitFromBundle(t *testing.T) {
 		Labels:            roles.Labels([]string{"control-plane", "ceph-osd", "fabric-gateway"}),
 		KubeletExtraArgs:  []string{"--node-status-update-frequency=4s"},
 		DataDir:           dataDir,
+		KubeletRootDir:    k0s.DefaultKubeletRootDir,
 		DisableComponents: k0s.DefaultDisabledComponents,
 	})
 	e.Responses[k0sBin+" "+strings.Join(installArgs, " ")] = ""
@@ -571,6 +573,7 @@ func TestRunInitWritesMirror(t *testing.T) {
 		Labels:            roles.Labels([]string{"control-plane", "ceph-osd", "fabric-gateway"}),
 		KubeletExtraArgs:  []string{"--node-status-update-frequency=4s"},
 		DataDir:           dataDir,
+		KubeletRootDir:    k0s.DefaultKubeletRootDir,
 		DisableComponents: k0s.DefaultDisabledComponents,
 	})
 	e.Responses["/usr/local/bin/k0s "+strings.Join(installArgs, " ")] = ""

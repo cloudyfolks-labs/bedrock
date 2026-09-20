@@ -10,6 +10,8 @@ import (
 	"github.com/cloudyfolks-labs/bedrock/internal/host"
 )
 
+const DefaultKubeletRootDir = "/var/lib/kubelet"
+
 type InstallOptions struct {
 	Role              string
 	Force             bool
@@ -21,6 +23,7 @@ type InstallOptions struct {
 	Labels            map[string]string
 	KubeletExtraArgs  []string
 	DataDir           string
+	KubeletRootDir    string
 	DisableComponents []string
 }
 
@@ -51,6 +54,9 @@ func InstallArgs(opts InstallOptions) []string {
 		args = append(args, "--kubelet-extra-args", strings.Join(opts.KubeletExtraArgs, " "))
 	}
 	args = append(args, "--data-dir", opts.DataDir)
+	if opts.KubeletRootDir != "" {
+		args = append(args, "--kubelet-root-dir", opts.KubeletRootDir)
+	}
 	if len(opts.DisableComponents) > 0 {
 		args = append(args, "--disable-components", strings.Join(opts.DisableComponents, ","))
 	}

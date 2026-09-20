@@ -10,16 +10,16 @@ import (
 )
 
 func TestInstallArgsController(t *testing.T) {
-	args := InstallArgs(InstallOptions{Role: "controller", ConfigPath: "/etc/k0s/k0s.yaml", EnableWorker: true, NoTaints: true, DynamicConfig: true, Labels: map[string]string{"b": "2", "a": "1"}, KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: "/var/lib/k0s", DisableComponents: DefaultDisabledComponents})
-	want := "install controller --config /etc/k0s/k0s.yaml --enable-worker --no-taints --enable-dynamic-config --labels a=1,b=2 --kubelet-extra-args --node-status-update-frequency=4s --data-dir /var/lib/k0s --disable-components konnectivity-server,metrics-server,helm"
+	args := InstallArgs(InstallOptions{Role: "controller", ConfigPath: "/etc/k0s/k0s.yaml", EnableWorker: true, NoTaints: true, DynamicConfig: true, Labels: map[string]string{"b": "2", "a": "1"}, KubeletExtraArgs: []string{"--node-status-update-frequency=4s"}, DataDir: "/var/lib/k0s", KubeletRootDir: DefaultKubeletRootDir, DisableComponents: DefaultDisabledComponents})
+	want := "install controller --config /etc/k0s/k0s.yaml --enable-worker --no-taints --enable-dynamic-config --labels a=1,b=2 --kubelet-extra-args --node-status-update-frequency=4s --data-dir /var/lib/k0s --kubelet-root-dir /var/lib/kubelet --disable-components konnectivity-server,metrics-server,helm"
 	if got := strings.Join(args, " "); got != want {
 		t.Fatalf("\n got %s\nwant %s", got, want)
 	}
 }
 
 func TestInstallArgsWorkerWithToken(t *testing.T) {
-	args := InstallArgs(InstallOptions{Role: "worker", TokenFile: "/etc/k0s/join-token", Labels: map[string]string{"x": "y"}, DataDir: "/var/lib/k0s"})
-	want := "install worker --token-file /etc/k0s/join-token --labels x=y --data-dir /var/lib/k0s"
+	args := InstallArgs(InstallOptions{Role: "worker", TokenFile: "/etc/k0s/join-token", Labels: map[string]string{"x": "y"}, DataDir: "/var/lib/k0s", KubeletRootDir: DefaultKubeletRootDir})
+	want := "install worker --token-file /etc/k0s/join-token --labels x=y --data-dir /var/lib/k0s --kubelet-root-dir /var/lib/kubelet"
 	if got := strings.Join(args, " "); got != want {
 		t.Fatalf("\n got %s\nwant %s", got, want)
 	}
