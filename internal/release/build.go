@@ -27,7 +27,9 @@ type ComponentConfig struct {
 	Namespace   string   `json:"namespace,omitempty"`
 	Values      string   `json:"values,omitempty"`
 	CRDsToGroup string   `json:"crdsToGroup,omitempty"`
+	Image       string   `json:"image,omitempty"`
 	ExtraImages []string `json:"extraImages,omitempty"`
+	KeepTags    bool     `json:"keepTags,omitempty"`
 }
 
 type BuildConfig struct {
@@ -129,7 +131,7 @@ func Build(cfg BuildConfig, opts BuildOptions) error {
 		if err != nil {
 			return err
 		}
-		files = PinImages(files, pins)
+		files = PinImages(files, pins, keepTagGroups(cfg))
 		cfg = pinExtraImages(cfg, pins)
 	}
 	if err := writeManifests(cfg, files, opts.Out); err != nil {
@@ -160,9 +162,22 @@ func Build(cfg BuildConfig, opts BuildOptions) error {
 func extraImagesOf(cfg BuildConfig) []string {
 	var images []string
 	for _, component := range cfg.Components {
+		if component.Image != "" {
+			images = append(images, component.Image)
+		}
 		images = append(images, component.ExtraImages...)
 	}
 	return images
+}
+
+func keepTagGroups(cfg BuildConfig) map[string]struct{} {
+	groups := map[string]struct{}{}
+	for _, component := range cfg.Components {
+		if component.KeepTags {
+			groups[groupDir(component)] = struct{}{}
+		}
+	}
+	return groups
 }
 
 func loadRenderedGroups(files []rendered) []Group {
@@ -182,16 +197,21 @@ func pinExtraImages(cfg BuildConfig, pins map[string]string) BuildConfig {
 	for _, component := range cfg.Components {
 		extra := make([]string, 0, len(component.ExtraImages))
 		for _, image := range component.ExtraImages {
-			if pinned, ok := pins[image]; ok {
-				image = pinned
-			}
-			extra = append(extra, image)
+			extra = append(extra, pinned(image, pins))
 		}
 		component.ExtraImages = extra
+		component.Image = pinned(component.Image, pins)
 		components = append(components, component)
 	}
 	cfg.Components = components
 	return cfg
+}
+
+func pinned(image string, pins map[string]string) string {
+	if replacement, ok := pins[image]; ok {
+		return replacement
+	}
+	return image
 }
 
 func mergeImages(images, extra []string) []string {
@@ -208,36 +228,42 @@ func mergeImages(images, extra []string) []string {
 }
 
 func renderComponent(component ComponentConfig, dirs map[string]string, opts BuildOptions) ([]rendered, error) {
-	group := groupDir(component)
-	var out []rendered
+	var objects []*unstructured.Unstructured
 	for _, dir := range component.Dirs {
-		objects, err := loadObjects(os.DirFS(opts.Root), dir, component.Name)
+		loaded, err := loadObjects(os.DirFS(opts.Root), dir, component.Name)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, rendered{group: group, file: component.Name + ".yaml", objects: stripComponentLabel(objects)})
+		objects = append(objects, stripComponentLabel(loaded)...)
 	}
-	if component.Chart == "" {
-		return out, nil
+	if component.Chart != "" {
+		templated, err := helmTemplate(component, opts)
+		if err != nil {
+			return nil, err
+		}
+		if component.Namespace != "" && component.Namespace != "kube-system" {
+			templated = append([]*unstructured.Unstructured{namespaceObject(component.Namespace)}, templated...)
+		}
+		objects = append(objects, templated...)
 	}
-	objects, err := helmTemplate(component, opts)
-	if err != nil {
-		return nil, err
+	return placeCRDs(component, dirs, objects)
+}
+
+func placeCRDs(component ComponentConfig, dirs map[string]string, objects []*unstructured.Unstructured) ([]rendered, error) {
+	group := groupDir(component)
+	file := component.Name + ".yaml"
+	if component.CRDsToGroup == "" {
+		return []rendered{{group: group, file: file, objects: objects}}, nil
+	}
+	target, ok := dirs[component.CRDsToGroup]
+	if !ok {
+		return nil, fmt.Errorf("crdsToGroup %q is not a component", component.CRDsToGroup)
 	}
 	crds, rest := partitionCRDs(objects)
-	if component.Namespace != "" && component.Namespace != "kube-system" {
-		rest = append([]*unstructured.Unstructured{namespaceObject(component.Namespace)}, rest...)
+	out := []rendered{{group: group, file: file, objects: rest}}
+	if len(crds) > 0 {
+		out = append([]rendered{{group: target, file: component.Name + "-crds.yaml", objects: crds}}, out...)
 	}
-	if component.CRDsToGroup != "" && len(crds) > 0 {
-		target, ok := dirs[component.CRDsToGroup]
-		if !ok {
-			return nil, fmt.Errorf("crdsToGroup %q is not a component", component.CRDsToGroup)
-		}
-		out = append(out, rendered{group: target, file: component.Name + "-crds.yaml", objects: crds})
-		out = append(out, rendered{group: group, file: component.Name + ".yaml", objects: rest})
-		return out, nil
-	}
-	out = append(out, rendered{group: group, file: component.Name + ".yaml", objects: append(crds, rest...)})
 	return out, nil
 }
 
@@ -343,6 +369,9 @@ func writeManifests(cfg BuildConfig, files []rendered, out string) error {
 		}
 	}
 	for _, file := range mergeRendered(files) {
+		if len(file.objects) == 0 {
+			continue
+		}
 		var buf bytes.Buffer
 		for _, obj := range file.objects {
 			raw, err := sigyaml.Marshal(obj.Object)
@@ -392,17 +421,21 @@ func componentSpecs(cfg BuildConfig, groups []Group, version string) []v1alpha1.
 		if componentVersion == "" {
 			componentVersion = version
 		}
-		images := ImagesOf([]Group{byName[component.Name]})
-		image := ""
-		switch {
-		case len(images) > 0:
-			image = images[0]
-		case len(component.ExtraImages) > 0:
-			image = component.ExtraImages[0]
-		}
-		specs = append(specs, v1alpha1.ReleaseComponent{Name: component.Name, Version: componentVersion, Image: image})
+		specs = append(specs, v1alpha1.ReleaseComponent{Name: component.Name, Version: componentVersion, Image: primaryImage(component, ImagesOf([]Group{byName[component.Name]}))})
 	}
 	return specs
+}
+
+func primaryImage(component ComponentConfig, rendered []string) string {
+	switch {
+	case component.Image != "":
+		return component.Image
+	case len(rendered) > 0:
+		return rendered[0]
+	case len(component.ExtraImages) > 0:
+		return component.ExtraImages[0]
+	}
+	return ""
 }
 
 func writeMetadata(out string, spec v1alpha1.ReleaseSpec, images []string) error {

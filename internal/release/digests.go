@@ -50,9 +50,19 @@ func pinnedReference(image, digest string) string {
 	return repo + "@" + digest
 }
 
-func PinImages(files []rendered, pins map[string]string) []rendered {
-	return rewriteImageRefs(files, func(current string) (string, bool) {
+func PinImages(files []rendered, pins map[string]string, skip map[string]struct{}) []rendered {
+	toPin := make([]rendered, 0, len(files))
+	unchanged := make([]rendered, 0, len(files))
+	for _, file := range files {
+		if _, found := skip[file.group]; found {
+			unchanged = append(unchanged, file)
+			continue
+		}
+		toPin = append(toPin, file)
+	}
+	pinnedFiles := rewriteImageRefs(toPin, func(current string) (string, bool) {
 		pinned, found := pins[current]
 		return pinned, found
 	})
+	return append(pinnedFiles, unchanged...)
 }

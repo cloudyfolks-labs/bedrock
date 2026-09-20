@@ -7,10 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/cloudyfolks-labs/bedrock/api/v1alpha1"
 )
 
 func testBuild(t *testing.T) (BuildConfig, BuildOptions) {
@@ -169,6 +172,81 @@ func TestBuildSkipsConfiguredImageWhenPinning(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("images %v do not contain the unpinned configured image %s", bundle.Images, opts.Image)
+	}
+}
+
+func TestBuildMovesDirCRDsAndReportsImage(t *testing.T) {
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Fatal("helm is required on PATH for the release builder tests")
+	}
+	cfg, err := LoadBuildConfig(filepath.Join("testdata", "build", "components-dircrds.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := t.TempDir()
+	opts := BuildOptions{Version: "v9.9.9", Image: "ghcr.io/cloudyfolks-labs/bedrock:v9.9.9", Out: out, Helm: "helm", Root: filepath.Join("testdata", "build"), CacheDir: t.TempDir()}
+	if err := Build(cfg, opts); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := Load(os.DirFS(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.Groups) != 3 || bundle.Groups[0].Name != "crds" || bundle.Groups[1].Name != "gadgets" {
+		t.Fatalf("groups %+v", bundle.Groups)
+	}
+	if len(bundle.Groups[0].Objects) != 1 || bundle.Groups[0].Objects[0].GetName() != "gadgets.example.com" {
+		t.Fatalf("crds group %+v", bundle.Groups[0].Objects)
+	}
+	if len(bundle.Groups[1].Objects) != 1 || bundle.Groups[1].Objects[0].GetKind() != "Deployment" {
+		t.Fatalf("gadgets group %+v", bundle.Groups[1].Objects)
+	}
+	if _, err := os.Stat(filepath.Join(out, "manifests", "00-crds", "gadgets-crds.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	var gadgets v1alpha1.ReleaseComponent
+	for _, component := range bundle.Spec.Components {
+		if component.Name == "gadgets" {
+			gadgets = component
+		}
+	}
+	if gadgets.Image != "quay.io/example/primary:2" {
+		t.Fatalf("component image %q", gadgets.Image)
+	}
+	if !slices.Contains(bundle.Images, "quay.io/example/primary:2") {
+		t.Fatalf("images %v", bundle.Images)
+	}
+}
+
+func TestBuildKeepsTagsForMarkedComponents(t *testing.T) {
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Fatal("helm is required on PATH for the release builder tests")
+	}
+	cfg, err := LoadBuildConfig(filepath.Join("testdata", "build", "components-dircrds.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := t.TempDir()
+	resolve := func(_ context.Context, _ string) (string, error) {
+		return "sha256:" + strings.Repeat("a", 64), nil
+	}
+	opts := BuildOptions{Version: "v9.9.9", Image: "ghcr.io/cloudyfolks-labs/bedrock:v9.9.9", Out: out, Helm: "helm", Root: filepath.Join("testdata", "build"), CacheDir: t.TempDir(), PinDigests: true, Resolve: resolve}
+	if err := Build(cfg, opts); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := Load(os.DirFS(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	containers, _, _ := unstructured.NestedSlice(bundle.Groups[1].Objects[0].Object, "spec", "template", "spec", "containers")
+	image, _, _ := unstructured.NestedString(containers[0].(map[string]any), "image")
+	if image != "quay.io/example/gadget-operator:2" {
+		t.Fatalf("keepTags component must keep tag references, got %q", image)
+	}
+	for _, component := range bundle.Spec.Components {
+		if component.Name == "gadgets" && !strings.Contains(component.Image, "@sha256:") {
+			t.Fatalf("primary image must be pinned: %q", component.Image)
+		}
 	}
 }
 

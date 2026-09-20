@@ -85,7 +85,7 @@ func TestPinImagesRewritesEveryImageField(t *testing.T) {
 		},
 	}}
 	pins := map[string]string{"quay.io/a/b:1": "quay.io/a/b@sha256:x", "quay.io/a/init:1": "quay.io/a/init@sha256:y"}
-	out := PinImages([]rendered{{group: "90-x", file: "d.yaml", objects: []*unstructured.Unstructured{obj}}}, pins)
+	out := PinImages([]rendered{{group: "90-x", file: "d.yaml", objects: []*unstructured.Unstructured{obj}}}, pins, nil)
 	got := ImagesOf([]Group{{Objects: out[0].objects}})
 	want := []string{"ghcr.io/cloudyfolks-labs/bedrock:v1", "quay.io/a/b@sha256:x", "quay.io/a/init@sha256:y"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {

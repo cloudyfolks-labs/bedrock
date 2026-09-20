@@ -1,0 +1,15 @@
+k0sVersion: v1.36.3+k0s.0
+supportedOS: [ubuntu-24.04]
+upgradeFrom: []
+components:
+  - name: crds
+    order: 0
+  - name: gadgets
+    order: 30
+    dirs: [manifests/30-gadgets]
+    crdsToGroup: crds
+    image: quay.io/example/primary:2
+    keepTags: true
+  - name: bedrock
+    order: 90
+    dirs: [manifests/90-bedrock]
