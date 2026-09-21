@@ -75,6 +75,7 @@ func Catalog() []Definition {
 		{"storage.network", "", "VLAN id of the dedicated storage network.", free},
 		{"migration.network", "", "VLAN id of the dedicated live migration network.", free},
 		{"migration.parallel", "2", "Parallel live migrations per cluster.", intMin(1)},
+		{"virt.emulation", "false", "Run virtual machines with software emulation on hosts without KVM.", boolean},
 		{"overcommit.cpu", "4", "CPU overcommit ratio.", intMin(1)},
 		{"overcommit.memory", "1.0", "Memory overcommit ratio.", float},
 		{"backup.target", "", "Backup target URL, s3:// or nfs://.", free},

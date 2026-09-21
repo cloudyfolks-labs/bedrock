@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: clusterconfigs.bedrock.cloudyfolks.io
 spec:
   group: bedrock.cloudyfolks.io
@@ -152,6 +152,11 @@ spec:
                 type: object
               version:
                 type: string
+              virtualization:
+                properties:
+                  emulation:
+                    type: boolean
+                type: object
             required:
             - api
             - network

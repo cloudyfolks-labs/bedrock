@@ -20,8 +20,11 @@ const (
 	UpgradeActionResume = "resume"
 	UpgradeActionAbort  = "abort"
 
-	ConditionAvailable      = "Available"
-	ConditionUpgradeBlocked = "UpgradeBlocked"
+	ConditionAvailable           = "Available"
+	ConditionUpgradeBlocked      = "UpgradeBlocked"
+	ConditionStorageReady        = "StorageReady"
+	ConditionVirtualizationReady = "VirtualizationReady"
+	ConditionPlatformReady       = "PlatformReady"
 )
 
 type APISpec struct {

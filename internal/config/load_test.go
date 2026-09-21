@@ -79,3 +79,17 @@ func TestToObjects(t *testing.T) {
 		t.Fatalf("missing settings %v", want)
 	}
 }
+
+func TestToSettingsVirtualization(t *testing.T) {
+	cfg := v1alpha1.ClusterConfig{}
+	cfg.Spec.Virtualization.Emulation = true
+	for _, s := range ToSettings(cfg) {
+		if s.Name == "virt.emulation" {
+			if s.Spec.Value != "true" {
+				t.Fatalf("virt.emulation = %q", s.Spec.Value)
+			}
+			return
+		}
+	}
+	t.Fatal("virt.emulation setting missing")
+}

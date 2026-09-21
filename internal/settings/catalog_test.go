@@ -15,6 +15,7 @@ func TestCatalogHasPhaseOneKeys(t *testing.T) {
 		"backup.target", "backup.credentials-secret", "backup.etcd-schedule",
 		"audit.level", "loki.retention-days", "kata.enabled", "loki.enabled",
 		"images.refresh-schedule", "images.keep", "authn.require-second-factor",
+		"virt.emulation",
 	}
 	for _, key := range required {
 		if _, ok := Lookup(key); !ok {
@@ -58,5 +59,18 @@ func TestCatalogKeysAreValidObjectNames(t *testing.T) {
 		if errs := validation.IsDNS1123Subdomain(def.Key); len(errs) != 0 {
 			t.Fatalf("key %q is not a valid object name: %v", def.Key, errs)
 		}
+	}
+}
+
+func TestValidateEmulation(t *testing.T) {
+	def, ok := Lookup("virt.emulation")
+	if !ok || def.Default != "false" {
+		t.Fatalf("definition %+v %v", def, ok)
+	}
+	if err := def.Validate("true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := def.Validate("maybe"); err == nil {
+		t.Fatal("maybe must be invalid")
 	}
 }

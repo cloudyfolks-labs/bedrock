@@ -52,6 +52,11 @@ type StorageSpec struct {
 	Replicas int32 `json:"replicas,omitempty"`
 }
 
+type VirtualizationSpec struct {
+	// +optional
+	Emulation bool `json:"emulation,omitempty"`
+}
+
 type BundleRegistrySpec struct {
 	// +optional
 	Bundle string `json:"bundle,omitempty"`
@@ -73,6 +78,8 @@ type ClusterConfigSpec struct {
 	Platform PlatformSpec `json:"platform,omitempty"`
 	Network  NetworkSpec  `json:"network"`
 	Storage  StorageSpec  `json:"storage"`
+	// +optional
+	Virtualization VirtualizationSpec `json:"virtualization,omitempty"`
 	// +optional
 	Registry BundleRegistrySpec `json:"registry,omitempty"`
 	// +optional

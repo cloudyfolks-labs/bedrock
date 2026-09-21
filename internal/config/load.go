@@ -159,6 +159,7 @@ func ToSettings(cfg v1alpha1.ClusterConfig) []v1alpha1.Setting {
 		"storage.replicas":  strconv.Itoa(int(cfg.Spec.Storage.Replicas)),
 		"storage.network":   vlanValue(cfg.Spec.Network.StorageVlan),
 		"migration.network": vlanValue(cfg.Spec.Network.MigrationVlan),
+		"virt.emulation":    strconv.FormatBool(cfg.Spec.Virtualization.Emulation),
 		"kata.enabled":      strconv.FormatBool(cfg.Spec.Addons["kata"]),
 		"loki.enabled":      strconv.FormatBool(cfg.Spec.Addons["loki"]),
 	}
