@@ -14,11 +14,13 @@ import (
 )
 
 const (
-	storageNamespace  = "rook-ceph"
-	blockPoolName     = "bedrock-block"
-	filesystemName    = "bedrock-fs"
-	rbdProvisioner    = "rook-ceph.rbd.csi.ceph.com"
-	cephfsProvisioner = "rook-ceph.cephfs.csi.ceph.com"
+	storageNamespace   = "rook-ceph"
+	blockPoolName      = "bedrock-block"
+	filesystemName     = "bedrock-fs"
+	rbdProvisioner     = "rook-ceph.rbd.csi.ceph.com"
+	cephfsProvisioner  = "rook-ceph.cephfs.csi.ceph.com"
+	cephFailureDomain  = "host"
+	storageReplicasKey = "storage.replicas"
 )
 
 var storageAddon = Addon{Name: "storage", Condition: v1alpha1.ConditionStorageReady, Render: RenderStorage}
@@ -34,18 +36,14 @@ func RenderStorage(in AddonInput) (Rendered, error) {
 	if image == "" {
 		return Rendered{}, fmt.Errorf("release does not name the ceph image for component rook")
 	}
-	replicas, err := replicaCount(in.Settings["storage.replicas"])
+	replicas, err := replicaCount(in.Settings[storageReplicasKey])
 	if err != nil {
 		return Rendered{}, fmt.Errorf("storage.replicas: %w", err)
 	}
-	domain := "host"
-	if len(hosts) < replicas {
-		domain = "osd"
-	}
 	objects := []*unstructured.Unstructured{
-		cephCluster(image, hosts),
-		cephBlockPool(replicas, domain),
-		cephFilesystem(replicas, domain, len(hosts) > 1),
+		cephCluster(image, hosts, monCount(replicas)),
+		cephBlockPool(replicas),
+		cephFilesystem(replicas, len(hosts) > 1),
 		blockStorageClass("block", "Delete", true),
 		blockStorageClass("block-retain", "Retain", false),
 		filesystemStorageClass(),
@@ -96,7 +94,14 @@ func replicaCount(value string) (int, error) {
 	return n, nil
 }
 
-func cephCluster(image string, hosts []v1alpha1.Host) *unstructured.Unstructured {
+func monCount(replicas int) int64 {
+	if replicas > 1 {
+		return 3
+	}
+	return 1
+}
+
+func cephCluster(image string, hosts []v1alpha1.Host, mons int64) *unstructured.Unstructured {
 	nodes := make([]any, 0, len(hosts))
 	for _, host := range hosts {
 		devices := make([]any, 0, len(host.Spec.Storage.Devices))
@@ -105,10 +110,7 @@ func cephCluster(image string, hosts []v1alpha1.Host) *unstructured.Unstructured
 		}
 		nodes = append(nodes, map[string]any{"name": host.Name, "devices": devices})
 	}
-	mons, mgrs := int64(3), int64(2)
-	if len(hosts) < 3 {
-		mons = 1
-	}
+	mgrs := int64(2)
 	if len(hosts) < 2 {
 		mgrs = 1
 	}
@@ -128,17 +130,17 @@ func replicated(replicas int) map[string]any {
 	return map[string]any{"size": int64(replicas), "requireSafeReplicaSize": replicas > 1}
 }
 
-func cephBlockPool(replicas int, domain string) *unstructured.Unstructured {
+func cephBlockPool(replicas int) *unstructured.Unstructured {
 	return object("ceph.rook.io/v1", "CephBlockPool", storageNamespace, blockPoolName, map[string]any{
-		"failureDomain": domain,
+		"failureDomain": cephFailureDomain,
 		"replicated":    replicated(replicas),
 	})
 }
 
-func cephFilesystem(replicas int, domain string, standby bool) *unstructured.Unstructured {
+func cephFilesystem(replicas int, standby bool) *unstructured.Unstructured {
 	return object("ceph.rook.io/v1", "CephFilesystem", storageNamespace, filesystemName, map[string]any{
 		"metadataPool":               map[string]any{"replicated": replicated(replicas)},
-		"dataPools":                  []any{map[string]any{"name": "data0", "failureDomain": domain, "replicated": replicated(replicas)}},
+		"dataPools":                  []any{map[string]any{"name": "data0", "failureDomain": cephFailureDomain, "replicated": replicated(replicas)}},
 		"preserveFilesystemOnDelete": true,
 		"metadataServer":             map[string]any{"activeCount": int64(1), "activeStandby": standby},
 	})

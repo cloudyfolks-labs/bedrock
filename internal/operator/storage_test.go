@@ -134,7 +134,7 @@ func TestRenderStorageThreeNodes(t *testing.T) {
 	}
 }
 
-func TestRenderStorageFailureDomainFallsBackToOSD(t *testing.T) {
+func TestRenderStorageKeepsHostFailureDomain(t *testing.T) {
 	out, err := RenderStorage(storageInput([]v1alpha1.Host{osdHost("a", "/dev/sdb"), osdHost("b", "/dev/sdb")}, "3"))
 	if err != nil {
 		t.Fatal(err)
@@ -143,8 +143,38 @@ func TestRenderStorageFailureDomainFallsBackToOSD(t *testing.T) {
 	domain, _, _ := unstructured.NestedString(pool.Object, "spec", "failureDomain")
 	fs := findObject(out.Objects, "CephFilesystem", "bedrock-fs")
 	dataPools, _, _ := unstructured.NestedSlice(fs.Object, "spec", "dataPools")
-	if domain != "osd" || dataPools[0].(map[string]any)["failureDomain"] != "osd" {
+	if domain != "host" || dataPools[0].(map[string]any)["failureDomain"] != "host" {
 		t.Fatalf("domain %s data pools %+v", domain, dataPools)
+	}
+}
+
+func TestRenderStorageTopologyDoesNotShrink(t *testing.T) {
+	hosts := []v1alpha1.Host{osdHost("a", "/dev/sdb"), osdHost("b", "/dev/sdb"), osdHost("c", "/dev/sdb")}
+	grown, err := RenderStorage(storageInput(hosts, "3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shrunk, err := RenderStorage(storageInput(hosts[:1], "3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	monsBefore, _, _ := unstructured.NestedInt64(findObject(grown.Objects, "CephCluster", storageNamespace).Object, "spec", "mon", "count")
+	monsAfter, _, _ := unstructured.NestedInt64(findObject(shrunk.Objects, "CephCluster", storageNamespace).Object, "spec", "mon", "count")
+	if monsBefore != 3 || monsAfter != monsBefore {
+		t.Fatalf("mon count went from %d to %d", monsBefore, monsAfter)
+	}
+	multi, _, _ := unstructured.NestedBool(findObject(shrunk.Objects, "CephCluster", storageNamespace).Object, "spec", "mon", "allowMultiplePerNode")
+	if !multi {
+		t.Fatal("a shrunk cluster must allow multiple mons per node")
+	}
+	before, _, _ := unstructured.NestedString(findObject(grown.Objects, "CephBlockPool", blockPoolName).Object, "spec", "failureDomain")
+	after, _, _ := unstructured.NestedString(findObject(shrunk.Objects, "CephBlockPool", blockPoolName).Object, "spec", "failureDomain")
+	if after != before {
+		t.Fatalf("failure domain changed from %s to %s", before, after)
+	}
+	size, _, _ := unstructured.NestedInt64(findObject(shrunk.Objects, "CephBlockPool", blockPoolName).Object, "spec", "replicated", "size")
+	if size != 3 {
+		t.Fatalf("replica size shrank to %d", size)
 	}
 }
 
