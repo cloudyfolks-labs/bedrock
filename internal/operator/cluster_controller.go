@@ -155,9 +155,13 @@ func (r *ClusterReconciler) clearAction(ctx context.Context, cluster *v1alpha1.C
 var statusWriteBackoff = wait.Backoff{Steps: 10, Duration: 20 * time.Millisecond, Factor: 1.5, Jitter: 0.1}
 
 func (r *ClusterReconciler) writeStatus(ctx context.Context, mutate func(*v1alpha1.ClusterStatus)) error {
+	return writeClusterStatus(ctx, r.Client, mutate)
+}
+
+func writeClusterStatus(ctx context.Context, c client.Client, mutate func(*v1alpha1.ClusterStatus)) error {
 	return retry.OnError(statusWriteBackoff, errors.IsConflict, func() error {
 		var current v1alpha1.Cluster
-		if err := r.Client.Get(ctx, client.ObjectKey{Name: v1alpha1.ClusterName}, &current); err != nil {
+		if err := c.Get(ctx, client.ObjectKey{Name: v1alpha1.ClusterName}, &current); err != nil {
 			return client.IgnoreNotFound(err)
 		}
 		next := *current.Status.DeepCopy()
@@ -167,7 +171,7 @@ func (r *ClusterReconciler) writeStatus(ctx context.Context, mutate func(*v1alph
 			return nil
 		}
 		current.Status = next
-		return r.Client.Status().Update(ctx, &current)
+		return c.Status().Update(ctx, &current)
 	})
 }
 
