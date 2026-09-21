@@ -1,0 +1,7 @@
+crds:
+  enabled: true
+csi:
+  installCsiOperator: true
+enableDiscoveryDaemon: false
+monitoring:
+  enabled: false

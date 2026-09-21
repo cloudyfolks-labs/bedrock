@@ -38,6 +38,28 @@ components:
     dirs: [manifests/30-nmstate]
     crdsToGroup: crds
     extraImages: [quay.io/nmstate/kubernetes-nmstate-handler:v0.87.0]
+  - name: rook
+    order: 40
+    chart: charts/rook-ceph
+    version: v1.20.7
+    namespace: rook-ceph
+    values: release/values/rook.yaml
+    dirs: [manifests/40-rook]
+    crdsToGroup: crds
+    image: quay.io/ceph/ceph:v20.2.4
+    extraImages:
+      - quay.io/cephcsi/cephcsi:v3.17.1
+      - registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.17.0
+      - registry.k8s.io/sig-storage/csi-provisioner:v6.2.0
+      - registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0
+      - registry.k8s.io/sig-storage/csi-attacher:v4.12.0
+      - registry.k8s.io/sig-storage/csi-resizer:v2.1.0
+  - name: rook-csi
+    order: 41
+    chart: charts/ceph-csi-drivers
+    version: 1.0.4
+    namespace: rook-ceph
+    values: release/values/rook-csi.yaml
   - name: cert-manager
     order: 60
     chart: charts/cert-manager

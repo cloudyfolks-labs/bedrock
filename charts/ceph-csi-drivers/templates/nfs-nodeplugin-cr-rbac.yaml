@@ -1,0 +1,16 @@
+{{- $root := . -}}
+{{- $driver := .Values.drivers.nfs -}}
+{{- if $driver.enabled }}
+{{- $normalizedDriverName := include "normalizeDriverName" $driver.name }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $normalizedDriverName }}-nodeplugin-cr
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+{{- end }}
