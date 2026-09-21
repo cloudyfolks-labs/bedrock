@@ -46,7 +46,8 @@ type NetworkSpec struct {
 }
 
 type StorageSpec struct {
-	Devices []string `json:"devices"`
+	// +optional
+	Devices []string `json:"devices,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`

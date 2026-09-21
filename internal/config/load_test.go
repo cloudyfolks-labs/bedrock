@@ -30,7 +30,6 @@ func TestValidateRejectsBadInput(t *testing.T) {
 	cases := map[string]func(*v1alpha1.ClusterConfig){
 		"missing vip":      func(c *v1alpha1.ClusterConfig) { c.Spec.API.VIP = "" },
 		"bad vip":          func(c *v1alpha1.ClusterConfig) { c.Spec.API.VIP = "10.0.10" },
-		"no devices":       func(c *v1alpha1.ClusterConfig) { c.Spec.Storage.Devices = nil },
 		"bad role":         func(c *v1alpha1.ClusterConfig) { c.Spec.Roles = []string{"storage"} },
 		"no control-plane": func(c *v1alpha1.ClusterConfig) { c.Spec.Roles = []string{"workload"} },
 		"bad eip mode":     func(c *v1alpha1.ClusterConfig) { c.Spec.Network.Fabric.EIPMode = "arp" },
@@ -51,6 +50,17 @@ func TestValidateRejectsBadInput(t *testing.T) {
 				t.Fatal("expected validation error")
 			}
 		})
+	}
+}
+
+func TestValidateAllowsNoDevices(t *testing.T) {
+	cfg, err := Load(filepath.Join("testdata", "single-node.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Spec.Storage.Devices = nil
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("no devices must be valid: %v", err)
 	}
 }
 

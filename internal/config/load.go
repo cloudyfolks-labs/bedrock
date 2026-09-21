@@ -105,9 +105,6 @@ func Validate(cfg v1alpha1.ClusterConfig) error {
 			return fmt.Errorf("provider network %s gateway: %w", pn.Name, err)
 		}
 	}
-	if len(s.Storage.Devices) == 0 {
-		return fmt.Errorf("spec.storage.devices needs at least one device")
-	}
 	if s.Storage.Replicas < 1 {
 		return fmt.Errorf("spec.storage.replicas must be at least 1")
 	}

@@ -147,8 +147,6 @@ spec:
                     format: int32
                     minimum: 1
                     type: integer
-                required:
-                - devices
                 type: object
               version:
                 type: string
