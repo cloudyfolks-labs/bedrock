@@ -34,7 +34,10 @@ func RenderStorage(in AddonInput) (Rendered, error) {
 	if image == "" {
 		return Rendered{}, fmt.Errorf("release does not name the ceph image for component rook")
 	}
-	replicas := replicaCount(in.Settings["storage.replicas"])
+	replicas, err := replicaCount(in.Settings["storage.replicas"])
+	if err != nil {
+		return Rendered{}, fmt.Errorf("storage.replicas: %w", err)
+	}
 	domain := "host"
 	if len(hosts) < replicas {
 		domain = "osd"
@@ -82,12 +85,15 @@ func componentImage(bundle release.Bundle, name string) string {
 	return ""
 }
 
-func replicaCount(value string) int {
+func replicaCount(value string) (int, error) {
+	if value == "" {
+		return 1, nil
+	}
 	n, err := strconv.Atoi(value)
 	if err != nil || n < 1 {
-		return 1
+		return 0, fmt.Errorf("must be a positive integer, got %q", value)
 	}
-	return n
+	return n, nil
 }
 
 func cephCluster(image string, hosts []v1alpha1.Host) *unstructured.Unstructured {

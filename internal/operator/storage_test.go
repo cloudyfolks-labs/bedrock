@@ -156,6 +156,13 @@ func TestRenderStorageRequiresCephImage(t *testing.T) {
 	}
 }
 
+func TestRenderStorageRejectsInvalidReplicas(t *testing.T) {
+	in := storageInput([]v1alpha1.Host{osdHost("a", "/dev/sdb")}, "not-a-number")
+	if _, err := RenderStorage(in); err == nil {
+		t.Fatal("invalid storage.replicas must fail")
+	}
+}
+
 func TestRenderStorageIsPure(t *testing.T) {
 	in := storageInput([]v1alpha1.Host{osdHost("a", "/dev/sdb")}, "1")
 	first, _ := RenderStorage(in)
