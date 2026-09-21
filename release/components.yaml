@@ -60,6 +60,27 @@ components:
     version: 1.0.4
     namespace: rook-ceph
     values: release/values/rook-csi.yaml
+  - name: kubevirt
+    order: 50
+    version: v1.9.0
+    dirs: [manifests/50-kubevirt]
+    crdsToGroup: crds
+    keepTags: true
+    extraImages:
+      - quay.io/kubevirt/virt-api:v1.9.0
+      - quay.io/kubevirt/virt-controller:v1.9.0
+      - quay.io/kubevirt/virt-handler:v1.9.0
+      - quay.io/kubevirt/virt-launcher:v1.9.0
+      - quay.io/kubevirt/virt-exportproxy:v1.9.0
+      - quay.io/kubevirt/virt-exportserver:v1.9.0
+      - quay.io/kubevirt/sidecar-shim:v1.9.0
+      - quay.io/kubevirt/pr-helper:v1.9.0
+      - quay.io/kubevirt/cdi-controller:v1.66.1
+      - quay.io/kubevirt/cdi-importer:v1.66.1
+      - quay.io/kubevirt/cdi-cloner:v1.66.1
+      - quay.io/kubevirt/cdi-apiserver:v1.66.1
+      - quay.io/kubevirt/cdi-uploadserver:v1.66.1
+      - quay.io/kubevirt/cdi-uploadproxy:v1.66.1
   - name: cert-manager
     order: 60
     chart: charts/cert-manager

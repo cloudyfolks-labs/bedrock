@@ -5,7 +5,7 @@ dir=${1:-dist/release}
 
 test -f "$dir/release.yaml"
 test -f "$dir/images.txt"
-for group in 00-crds 10-kube-vip 20-fabric 25-multus 30-nmstate 40-rook 41-rook-csi 60-cert-manager 70-monitoring 80-kured 90-bedrock; do
+for group in 00-crds 10-kube-vip 20-fabric 25-multus 30-nmstate 40-rook 41-rook-csi 50-kubevirt 60-cert-manager 70-monitoring 80-kured 90-bedrock; do
   test -d "$dir/manifests/$group"
 done
 grep -q 'kind: CustomResourceDefinition' "$dir/manifests/00-crds/cert-manager-crds.yaml"
@@ -28,6 +28,11 @@ grep -q 'name: cephclusters.ceph.rook.io' "$dir/manifests/00-crds/rook-crds.yaml
 grep -q 'name: volumesnapshotclasses.snapshot.storage.k8s.io' "$dir/manifests/00-crds/rook-crds.yaml"
 grep -q 'name: drivers.csi.ceph.io' "$dir/manifests/00-crds/rook-crds.yaml"
 grep -q 'kind: Driver' "$dir/manifests/41-rook-csi/rook-csi.yaml"
+grep -q 'name: virt-operator' "$dir/manifests/50-kubevirt/kubevirt.yaml"
+grep -q 'name: cdi-operator' "$dir/manifests/50-kubevirt/kubevirt.yaml"
+grep -q 'name: kubevirts.kubevirt.io' "$dir/manifests/00-crds/kubevirt-crds.yaml"
+grep -q 'name: cdis.cdi.kubevirt.io' "$dir/manifests/00-crds/kubevirt-crds.yaml"
+grep -q 'quay.io/kubevirt/virt-launcher:v1.9.0' "$dir/images.txt"
 grep -q 'quay.io/ceph/ceph:v20.2.4' "$dir/images.txt"
 grep -q 'quay.io/cephcsi/cephcsi:v3.17.1' "$dir/images.txt"
 grep -q 'image: quay.io/ceph/ceph:v20.2.4' "$dir/release.yaml"
