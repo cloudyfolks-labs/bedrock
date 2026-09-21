@@ -4,7 +4,6 @@ set -euo pipefail
 version=${VERSION:-dev}
 image=${IMAGE:-ghcr.io/cloudyfolks-labs/bedrock:$version}
 workdir=$(mktemp -d)
-device=""
 export KUBECONFIG=/var/lib/k0s/pki/admin.conf
 
 dump() {
@@ -37,13 +36,22 @@ dump() {
     journalctl -u bedrock-agent.service --no-pager -n 100 || true
     echo "--- operator log"
     kubectl -n bedrock-system logs deploy/bedrock-operator --tail=300 || true
+    echo "--- addons"
+    kubectl -n rook-ceph get pods -o wide || true
+    kubectl -n kubevirt get pods -o wide || true
+    kubectl -n cdi get pods -o wide || true
+    kubectl -n traefik get pods,svc -o wide || true
+    kubectl -n nmstate get pods,ds -o wide || true
+    kubectl -n kube-system get ds kube-multus-ds -o wide || true
+    kubectl -n kubevirt get kubevirt kubevirt -o yaml || true
+    kubectl get cdi cdi -o yaml || true
+    kubectl -n traefik get certificate,secret platform-tls -o yaml || true
     echo "--- fabric logs"
     for pod in $(kubectl -n kube-system get pods -o name 2>/dev/null | grep -E 'fabric|ovn|ovs' || true); do
       echo "--- $pod"; kubectl -n kube-system logs "$pod" --tail=100 --all-containers || true
     done
     journalctl -u k0scontroller --no-pager -n 200 || true
   fi
-  if [ -n "$device" ]; then losetup -d "$device" || true; fi
   rm -rf "$workdir"
 }
 trap dump EXIT
@@ -62,24 +70,21 @@ nodeip=$(ip -json -4 addr show dev "$iface" | python3 -c 'import json,sys; print
 vip=$(echo "$nodeip" | awk -F. '{printf "%s.%s.%s.250", $1, $2, $3}')
 if [ "$vip" = "$nodeip" ]; then vip=$(echo "$nodeip" | awk -F. '{printf "%s.%s.%s.251", $1, $2, $3}'); fi
 
-truncate -s 20G "$workdir/osd.img"
-device=$(losetup --find --show "$workdir/osd.img")
-
-VERSION=$version VIP=$vip IFACE=$iface DEVICE=$device envsubst < hack/e2e/cluster.yaml.tmpl > "$workdir/cluster.yaml"
+VERSION=$version VIP=$vip IFACE=$iface envsubst < hack/e2e/cluster.yaml.tmpl > "$workdir/cluster.yaml"
 cat "$workdir/cluster.yaml"
 
 if [ -n "${BUNDLE:-}" ]; then
   mkdir -p /etc/k0s/containerd.d/certs.d/_default
   printf '[plugins."io.containerd.cri.v1.images".registry]\nconfig_path = "/etc/k0s/containerd.d/certs.d"\n' > /etc/k0s/containerd.d/cri-registry.toml
   printf 'server = "https://127.0.0.1:1"\n' > /etc/k0s/containerd.d/certs.d/_default/hosts.toml
-  bin/bedrock init -f "$workdir/cluster.yaml" --bundle "$BUNDLE" --timeout 20m
+  bin/bedrock init -f "$workdir/cluster.yaml" --bundle "$BUNDLE" --timeout 45m
   test -f /var/lib/k0s/images/k0s-airgap.tar
   test "$(ls /var/lib/k0s/images/*.tar | wc -l)" -ge 3
   sha256sum /usr/local/bin/k0s | awk '{print "sha256:"$1}' | grep -qx "$(awk '/amd64:/ {print $2}' dist/release/release.yaml)"
 else
   mkdir -p "$workdir/preload"
   docker save "$image" -o "$workdir/preload/bedrock.tar"
-  bin/bedrock init -f "$workdir/cluster.yaml" --release-dir dist/release --images-dir "$workdir/preload" --timeout 20m
+  bin/bedrock init -f "$workdir/cluster.yaml" --release-dir dist/release --images-dir "$workdir/preload" --timeout 45m
 fi
 
 kubectl get nodes -o wide
@@ -95,6 +100,32 @@ if kubectl get pods -A -o jsonpath='{range .items[*]}{.status.containerStatuses[
   exit 1
 fi
 kubectl -n cert-manager rollout status deployment/cert-manager --timeout=300s
+kubectl -n kube-system rollout status daemonset/kube-multus-ds --timeout=300s
+kubectl -n nmstate rollout status deployment/nmstate-operator --timeout=300s
+kubectl -n kube-system rollout status deployment/snapshot-controller --timeout=300s
+kubectl -n rook-ceph rollout status deployment/rook-ceph-operator --timeout=300s
+kubectl -n kubevirt rollout status deployment/virt-operator --timeout=300s
+kubectl -n cdi rollout status deployment/cdi-operator --timeout=300s
+kubectl -n traefik rollout status deployment/traefik --timeout=300s
+kubectl wait --for=jsonpath='{.status.phase}'=Deployed -n kubevirt kubevirt/kubevirt --timeout=900s
+kubectl -n kubevirt get kubevirt kubevirt -o jsonpath='{.spec.configuration.developerConfiguration.useEmulation}' | grep -qx true
+kubectl wait --for=jsonpath='{.status.phase}'=Deployed cdi/cdi --timeout=600s
+kubectl wait --for=condition=VirtualizationReady cluster/cluster --timeout=300s
+kubectl wait --for=condition=PlatformReady cluster/cluster --timeout=300s
+kubectl get cluster cluster -o jsonpath='{.status.conditions[?(@.type=="StorageReady")].reason}' | grep -qx NoDevices
+kubectl get clusterissuer bedrock-selfsigned -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' | grep -qx True
+kubectl -n traefik get secret platform-tls -o jsonpath='{.type}' | grep -qx kubernetes.io/tls
+kubectl -n traefik get tlsstore default -o jsonpath='{.spec.defaultCertificate.secretName}' | grep -qx platform-tls
+for _ in $(seq 1 60); do
+  lb=$(kubectl -n traefik get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+  if [ "$lb" = "$vip" ]; then break; fi
+  sleep 5
+done
+test "$lb" = "$vip"
+code=$(curl -sk -o /dev/null -w '%{http_code}' -m 10 "https://$vip/")
+test "$code" = "404"
+test "$(kubectl -n nmstate get ds nmstate-handler -o jsonpath='{.status.desiredNumberScheduled}')" = "0"
+kubectl get storageclass block 2>/dev/null && exit 1
 systemctl is-active bedrock-agent.service
 node=$(hostname | tr '[:upper:]' '[:lower:]')
 for _ in $(seq 1 30); do
@@ -117,6 +148,12 @@ fi
 grep -q 'a node may only update the status of its own Host' "$workdir/impersonate.err"
 kubectl patch host "$node" --type=merge -p '{"spec":{"management":{"enabled":true}}}'
 kubectl wait --for=condition=ManagementApplied host/"$node" --timeout=180s
+for _ in $(seq 1 30); do
+  desired=$(kubectl -n nmstate get ds nmstate-handler -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || true)
+  if [ "${desired:-0}" = "1" ]; then break; fi
+  sleep 5
+done
+test "${desired:-0}" = "1"
 test -f /etc/sysctl.d/90-bedrock.conf
 grep -q 'net.ipv4.ip_forward = 1' /etc/sysctl.d/90-bedrock.conf
 kubectl get node "$node" -o jsonpath='{.metadata.labels.bedrock\.cloudyfolks\.io/managed}' | grep -qx true

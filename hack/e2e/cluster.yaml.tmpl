@@ -8,6 +8,6 @@ spec:
     vip: ${VIP}
   network:
     managementInterface: ${IFACE}
-  storage:
-    devices: [${DEVICE}]
+  virtualization:
+    emulation: true
   roles: [control-plane, ceph-osd, fabric-gateway, workload]

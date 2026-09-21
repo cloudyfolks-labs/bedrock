@@ -40,6 +40,7 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v5
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -54,6 +55,7 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v5
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
