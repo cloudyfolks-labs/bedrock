@@ -1,0 +1,21 @@
+deployment:
+  replicas: 1
+service:
+  annotations:
+    kube-vip.io/loadbalancerIPs: "${BEDROCK_VIP}"
+ports:
+  web:
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+providers:
+  kubernetesIngress:
+    publishedService:
+      enabled: true
+tlsStore:
+  default:
+    defaultCertificate:
+      secretName: platform-tls

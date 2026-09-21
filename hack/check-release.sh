@@ -5,7 +5,7 @@ dir=${1:-dist/release}
 
 test -f "$dir/release.yaml"
 test -f "$dir/images.txt"
-for group in 00-crds 10-kube-vip 20-fabric 25-multus 30-nmstate 40-rook 41-rook-csi 50-kubevirt 60-cert-manager 70-monitoring 80-kured 90-bedrock; do
+for group in 00-crds 10-kube-vip 20-fabric 25-multus 30-nmstate 40-rook 41-rook-csi 50-kubevirt 60-cert-manager 65-traefik 70-monitoring 80-kured 90-bedrock; do
   test -d "$dir/manifests/$group"
 done
 grep -q 'kind: CustomResourceDefinition' "$dir/manifests/00-crds/cert-manager-crds.yaml"
@@ -37,6 +37,11 @@ grep -q 'quay.io/ceph/ceph:v20.2.4' "$dir/images.txt"
 grep -q 'quay.io/cephcsi/cephcsi:v3.17.1' "$dir/images.txt"
 grep -q 'image: quay.io/ceph/ceph:v20.2.4' "$dir/release.yaml"
 grep -q 'name: cert-manager' "$dir/manifests/60-cert-manager/cert-manager.yaml"
+grep -q 'kind: Service' "$dir/manifests/65-traefik/traefik.yaml"
+grep -q 'kube-vip.io/loadbalancerIPs: \${BEDROCK_VIP}' "$dir/manifests/65-traefik/traefik.yaml"
+grep -q 'kind: TLSStore' "$dir/manifests/65-traefik/traefik.yaml"
+grep -q 'name: ingressroutes.traefik.io' "$dir/manifests/00-crds/traefik-crds.yaml"
+grep -q 'endpointslices' "$dir/manifests/10-kube-vip/kube-vip.yaml"
 grep -q 'metrics-server' "$dir/manifests/70-monitoring/monitoring.yaml"
 grep -q 'kind: DaemonSet' "$dir/manifests/80-kured/kured.yaml"
 grep -q 'name: bedrock-operator' "$dir/manifests/90-bedrock/bedrock.yaml"

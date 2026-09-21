@@ -89,6 +89,13 @@ components:
     values: release/values/cert-manager.yaml
     crdsToGroup: crds
     extraImages: [quay.io/jetstack/cert-manager-acmesolver:v1.20.2]
+  - name: traefik
+    order: 65
+    chart: charts/traefik
+    version: 41.6.0
+    namespace: traefik
+    values: release/values/traefik.yaml
+    crdsToGroup: crds
   - name: monitoring
     order: 70
     chart: charts/metrics-server
