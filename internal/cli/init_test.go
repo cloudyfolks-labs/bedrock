@@ -601,3 +601,10 @@ func TestRunInitWritesMirror(t *testing.T) {
 		t.Fatalf("hosts.toml %q", hosts)
 	}
 }
+
+func TestKubeVIPDataEnablesServicesMode(t *testing.T) {
+	data := kubeVIPData("10.0.0.250", "eth0")
+	if data["svc_enable"] != "true" || data["cp_enable"] != "true" || data["address"] != "10.0.0.250" {
+		t.Fatalf("data %+v", data)
+	}
+}
