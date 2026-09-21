@@ -57,6 +57,9 @@ func Run(ctx context.Context, cfg *rest.Config, scheme *runtime.Scheme, opts Run
 	if err := (&ClusterReconciler{Client: mgr.GetClient(), Bundle: bundle, Gates: release.Gates{}, Interval: 2 * time.Second, GroupTimeout: 30 * time.Minute}).SetupWithManager(mgr); err != nil {
 		return err
 	}
+	if err := (&StorageTopologyReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		return err
+	}
 	if err := (&AddonReconciler{Client: mgr.GetClient(), Bundle: bundle, Addons: DefaultAddons(), Interval: DefaultAddonInterval, ReadyInterval: DefaultAddonReadyInterval}).SetupWithManager(mgr); err != nil {
 		return err
 	}
