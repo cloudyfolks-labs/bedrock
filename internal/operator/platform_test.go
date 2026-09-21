@@ -124,6 +124,18 @@ func TestRenderPlatformCustom(t *testing.T) {
 	}
 }
 
+func TestRenderPlatformCustomRequiresTLSKeys(t *testing.T) {
+	in := platformInput(map[string]string{"platform.tls-mode": "Custom", "platform.custom-tls": "my-tls"})
+	in.CustomTLS = &corev1.Secret{Data: map[string][]byte{"tls.crt": []byte("CERT")}}
+	if _, err := RenderPlatform(in); err == nil {
+		t.Fatal("secret missing tls.key must fail")
+	}
+	in.CustomTLS = &corev1.Secret{Data: map[string][]byte{"tls.key": []byte("KEY")}}
+	if _, err := RenderPlatform(in); err == nil {
+		t.Fatal("secret missing tls.crt must fail")
+	}
+}
+
 func TestRenderPlatformRejectsUnknownMode(t *testing.T) {
 	if _, err := RenderPlatform(platformInput(map[string]string{"platform.tls-mode": "Plain"})); err == nil {
 		t.Fatal("unknown mode must fail")

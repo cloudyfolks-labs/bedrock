@@ -108,9 +108,14 @@ func customSecret(name string, in AddonInput) (*unstructured.Unstructured, error
 	if in.CustomTLS == nil {
 		return nil, fmt.Errorf("secret %s/%s not found", release.SystemNamespace, name)
 	}
-	data := map[string]any{}
-	for key, value := range in.CustomTLS.Data {
-		data[key] = base64.StdEncoding.EncodeToString(value)
+	crt := in.CustomTLS.Data["tls.crt"]
+	key := in.CustomTLS.Data["tls.key"]
+	if len(crt) == 0 || len(key) == 0 {
+		return nil, fmt.Errorf("secret %s/%s must contain tls.crt and tls.key", release.SystemNamespace, name)
+	}
+	data := map[string]any{
+		"tls.crt": base64.StdEncoding.EncodeToString(crt),
+		"tls.key": base64.StdEncoding.EncodeToString(key),
 	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1",
