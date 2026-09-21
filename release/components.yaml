@@ -27,6 +27,17 @@ components:
     namespace: kube-system
     values: release/values/fabric.yaml
     crdsToGroup: crds
+  - name: multus
+    order: 25
+    version: v4.3.1
+    dirs: [manifests/25-multus]
+    crdsToGroup: crds
+  - name: nmstate
+    order: 30
+    version: v0.87.0
+    dirs: [manifests/30-nmstate]
+    crdsToGroup: crds
+    extraImages: [quay.io/nmstate/kubernetes-nmstate-handler:v0.87.0]
   - name: cert-manager
     order: 60
     chart: charts/cert-manager
