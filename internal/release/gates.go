@@ -167,3 +167,19 @@ func notReady(ctx context.Context, c client.Client, gates Gates, group Group) ([
 	}
 	return pending, nil
 }
+
+func PhaseGate(phase string) Gate {
+	return func(obj *unstructured.Unstructured) Readiness {
+		current, _, _ := unstructured.NestedString(obj.Object, "status", "phase")
+		if current == phase {
+			return Readiness{Ready: true}
+		}
+		return Readiness{Message: fmt.Sprintf("%s phase %s, want %s", obj.GetName(), current, phase)}
+	}
+}
+
+func ConditionGate(conditionType string) Gate {
+	return func(obj *unstructured.Unstructured) Readiness {
+		return conditionTrue(obj, conditionType)
+	}
+}

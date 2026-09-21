@@ -119,3 +119,24 @@ func TestCheckUsesOverride(t *testing.T) {
 		t.Fatal("default must apply without override")
 	}
 }
+
+func TestPhaseGate(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "kubevirt"}, "status": map[string]any{"phase": "Deploying"}}}
+	if r := PhaseGate("Deployed")(obj); r.Ready || r.Failed || r.Message != "kubevirt phase Deploying, want Deployed" {
+		t.Fatalf("readiness %+v", r)
+	}
+	_ = unstructured.SetNestedField(obj.Object, "Deployed", "status", "phase")
+	if r := PhaseGate("Deployed")(obj); !r.Ready {
+		t.Fatalf("readiness %+v", r)
+	}
+}
+
+func TestConditionGate(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "platform-tls"}, "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}}}
+	if r := ConditionGate("Ready")(obj); !r.Ready {
+		t.Fatalf("readiness %+v", r)
+	}
+	if r := ConditionGate("Issuing")(obj); r.Ready {
+		t.Fatalf("readiness %+v", r)
+	}
+}
