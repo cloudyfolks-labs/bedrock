@@ -53,18 +53,38 @@ func refAnnotations(ref string) layout.Option {
 }
 
 func appendNamed(path layout.Path, desc *remote.Descriptor, ref string) error {
+	named, err := containerdName(ref)
+	if err != nil {
+		return err
+	}
 	if desc.MediaType.IsIndex() {
 		index, err := desc.ImageIndex()
 		if err != nil {
 			return err
 		}
-		return path.AppendIndex(index, refAnnotations(ref))
+		return path.AppendIndex(index, refAnnotations(named))
 	}
 	img, err := desc.Image()
 	if err != nil {
 		return err
 	}
-	return path.AppendImage(img, refAnnotations(ref))
+	return path.AppendImage(img, refAnnotations(named))
+}
+
+func containerdName(ref string) (string, error) {
+	parsed, err := name.ParseReference(ref)
+	if err != nil {
+		return "", err
+	}
+	registry := parsed.Context().RegistryStr()
+	if registry == name.DefaultRegistry {
+		registry = "docker.io"
+	}
+	repository := registry + "/" + parsed.Context().RepositoryStr()
+	if digest, ok := parsed.(name.Digest); ok {
+		return repository + "@" + digest.DigestStr(), nil
+	}
+	return repository + ":" + parsed.Identifier(), nil
 }
 
 func tarDirectory(dir, dest string) error {
