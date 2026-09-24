@@ -50,6 +50,18 @@ dump() {
     for pod in $(kubectl -n kube-system get pods -o name 2>/dev/null | grep -E 'fabric|ovn|ovs' || true); do
       echo "--- $pod"; kubectl -n kube-system logs "$pod" --tail=100 --all-containers || true
     done
+    echo "--- restarted containers"
+    kubectl get pods -A --no-headers 2>/dev/null | awk '$5 != "0" {print $1, $2}' | while read -r ns pod; do
+      echo "--- $ns/$pod"
+      kubectl -n "$ns" get pod "$pod" -o jsonpath='{range .status.containerStatuses[*]}{.name} restarts={.restartCount} reason={.lastState.terminated.reason} exit={.lastState.terminated.exitCode}{"\n"}{end}' || true
+      for container in $(kubectl -n "$ns" get pod "$pod" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null); do
+        kubectl -n "$ns" logs "$pod" -c "$container" --previous --tail=80 || true
+      done
+    done
+    echo "--- events"
+    kubectl get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -80 || true
+    echo "--- kernel oom"
+    dmesg 2>/dev/null | grep -iE 'oom|killed process' | tail -20 || true
     journalctl -u k0scontroller --no-pager -n 200 || true
   fi
   rm -rf "$workdir"
