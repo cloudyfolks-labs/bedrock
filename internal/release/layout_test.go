@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -154,6 +155,43 @@ func TestPullLayoutNamesTheIndex(t *testing.T) {
 		if !strings.Contains(entries, "blobs/sha256/"+m.Digest.Hex) {
 			t.Fatalf("platform manifest %s missing from layout", m.Digest)
 		}
+	}
+}
+
+func TestPullLayoutNamesAPinnedTagTwice(t *testing.T) {
+	server := httptest.NewServer(registry.New())
+	defer server.Close()
+	host := strings.TrimPrefix(server.URL, "http://")
+	tagged, err := name.ParseReference(host + "/lib/pinned:1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx, err := random.Index(128, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(tagged, idx); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := idx.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned := host + "/lib/pinned:1.0@" + digest.String()
+	dest := t.TempDir() + "/pinned.tar"
+	if _, err := PullLayout(context.Background(), pinned, dest); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range indexManifestFromTar(t, dest).Manifests {
+		if entry.Digest != digest {
+			t.Fatalf("entry digest %s want %s", entry.Digest, digest)
+		}
+		names = append(names, entry.Annotations[annotationImageName])
+	}
+	want := []string{host + "/lib/pinned:1.0", host + "/lib/pinned@" + digest.String()}
+	if !slices.Equal(names, want) {
+		t.Fatalf("image names %v, want %v: runtime tag references need the tag name", names, want)
 	}
 }
 

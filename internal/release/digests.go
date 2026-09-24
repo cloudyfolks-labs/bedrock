@@ -39,15 +39,8 @@ func ResolveDigests(ctx context.Context, images []string, skipPrefix string, res
 }
 
 func pinnedReference(image, digest string) string {
-	repo := image
-	if at := strings.LastIndex(repo, "@"); at >= 0 {
-		repo = repo[:at]
-	}
-	slash := strings.LastIndex(repo, "/")
-	if colon := strings.LastIndex(repo, ":"); colon > slash {
-		repo = repo[:colon]
-	}
-	return repo + "@" + digest
+	base, _, _ := strings.Cut(image, "@")
+	return base + "@" + digest
 }
 
 func PinImages(files []rendered, pins map[string]string, skip map[string]struct{}) []rendered {

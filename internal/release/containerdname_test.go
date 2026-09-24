@@ -1,6 +1,9 @@
 package release
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestContainerdName(t *testing.T) {
 	digest := "sha256:24841fe2de7304c149343d877d2923b4c8800a38ba015dea9174c23b20e344a0"
@@ -19,6 +22,26 @@ func TestContainerdName(t *testing.T) {
 		}
 		if got != want {
 			t.Fatalf("%s: got %s, want %s", ref, got, want)
+		}
+	}
+}
+
+func TestContainerdNames(t *testing.T) {
+	digest := "sha256:24841fe2de7304c149343d877d2923b4c8800a38ba015dea9174c23b20e344a0"
+	cases := map[string][]string{
+		"quay.io/kubevirt/cdi-uploadproxy:v1.66.1":           {"quay.io/kubevirt/cdi-uploadproxy:v1.66.1"},
+		"quay.io/kubevirt/cdi-uploadproxy:v1.66.1@" + digest: {"quay.io/kubevirt/cdi-uploadproxy:v1.66.1", "quay.io/kubevirt/cdi-uploadproxy@" + digest},
+		"docker.io/traefik:v3.7.13@" + digest:                {"docker.io/library/traefik:v3.7.13", "docker.io/library/traefik@" + digest},
+		"quay.io/kubevirt/cdi-uploadproxy@" + digest:         {"quay.io/kubevirt/cdi-uploadproxy@" + digest},
+		"localhost:5000/bedrock@" + digest:                   {"localhost:5000/bedrock@" + digest},
+	}
+	for ref, want := range cases {
+		got, err := containerdNames(ref)
+		if err != nil {
+			t.Fatalf("%s: %v", ref, err)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("%s: got %v, want %v", ref, got, want)
 		}
 	}
 }

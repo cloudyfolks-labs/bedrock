@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
@@ -53,10 +54,19 @@ func refAnnotations(ref string) layout.Option {
 }
 
 func appendNamed(path layout.Path, desc *remote.Descriptor, ref string) error {
-	named, err := containerdName(ref)
+	names, err := containerdNames(ref)
 	if err != nil {
 		return err
 	}
+	for _, named := range names {
+		if err := appendOnce(path, desc, named); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func appendOnce(path layout.Path, desc *remote.Descriptor, named string) error {
 	if desc.MediaType.IsIndex() {
 		index, err := desc.ImageIndex()
 		if err != nil {
@@ -69,6 +79,37 @@ func appendNamed(path layout.Path, desc *remote.Descriptor, ref string) error {
 		return err
 	}
 	return path.AppendImage(img, refAnnotations(named))
+}
+
+func containerdNames(ref string) ([]string, error) {
+	base, digest, pinned := strings.Cut(ref, "@")
+	if !pinned {
+		named, err := containerdName(ref)
+		return []string{named}, err
+	}
+	byDigest, err := containerdName(repositoryOf(base) + "@" + digest)
+	if err != nil {
+		return nil, err
+	}
+	if !hasTag(base) {
+		return []string{byDigest}, nil
+	}
+	byTag, err := containerdName(base)
+	if err != nil {
+		return nil, err
+	}
+	return []string{byTag, byDigest}, nil
+}
+
+func hasTag(ref string) bool {
+	return strings.LastIndex(ref, ":") > strings.LastIndex(ref, "/")
+}
+
+func repositoryOf(ref string) string {
+	if !hasTag(ref) {
+		return ref
+	}
+	return ref[:strings.LastIndex(ref, ":")]
 }
 
 func containerdName(ref string) (string, error) {

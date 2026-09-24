@@ -55,7 +55,7 @@ func TestResolveDigestsPinsAndSkips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := pins["quay.io/jetstack/cert-manager-controller:v1.20.2"]; got != "quay.io/jetstack/cert-manager-controller@sha256:"+strings.Repeat("a", 64) {
+	if got := pins["quay.io/jetstack/cert-manager-controller:v1.20.2"]; got != "quay.io/jetstack/cert-manager-controller:v1.20.2@sha256:"+strings.Repeat("a", 64) {
 		t.Fatalf("pinned %q", got)
 	}
 	if _, ok := pins["ghcr.io/cloudyfolks-labs/bedrock:v0.1.0"]; ok {
