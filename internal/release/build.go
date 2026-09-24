@@ -241,6 +241,12 @@ func renderComponent(component ComponentConfig, dirs map[string]string, opts Bui
 		if err != nil {
 			return nil, err
 		}
+		if component.Namespace != "" {
+			templated, err = defaultNamespaces(templated, component.Namespace)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if component.Namespace != "" && component.Namespace != "kube-system" {
 			templated = append([]*unstructured.Unstructured{namespaceObject(component.Namespace)}, templated...)
 		}

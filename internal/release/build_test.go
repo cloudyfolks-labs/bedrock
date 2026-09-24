@@ -60,10 +60,13 @@ func TestBuildRendersChartsAndDirs(t *testing.T) {
 		t.Fatalf("crds group %+v", bundle.Groups[0].Objects)
 	}
 	widgets := bundle.Groups[1].Objects
-	if len(widgets) != 2 || widgets[0].GetKind() != "Namespace" || widgets[0].GetName() != "widgets" || widgets[1].GetKind() != "Deployment" {
+	if len(widgets) != 3 || widgets[0].GetKind() != "Namespace" || widgets[0].GetName() != "widgets" || widgets[1].GetKind() != "ServiceAccount" || widgets[2].GetKind() != "Deployment" {
 		t.Fatalf("widgets group %+v", widgets)
 	}
-	replicas, _, _ := unstructuredInt(widgets[1], "spec", "replicas")
+	if widgets[1].GetNamespace() != "widgets" {
+		t.Fatalf("chart ServiceAccount namespace %q, want widgets", widgets[1].GetNamespace())
+	}
+	replicas, _, _ := unstructuredInt(widgets[2], "spec", "replicas")
 	if replicas != 2 {
 		t.Fatalf("values not applied, replicas %d", replicas)
 	}
