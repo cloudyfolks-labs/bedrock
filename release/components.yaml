@@ -75,6 +75,8 @@ components:
       - quay.io/kubevirt/virt-exportserver:v1.9.0
       - quay.io/kubevirt/sidecar-shim:v1.9.0
       - quay.io/kubevirt/pr-helper:v1.9.0
+      - quay.io/kubevirt/virt-template-apiserver:v0.2.2
+      - quay.io/kubevirt/virt-template-controller:v0.2.2
       - quay.io/kubevirt/cdi-controller:v1.66.1
       - quay.io/kubevirt/cdi-importer:v1.66.1
       - quay.io/kubevirt/cdi-cloner:v1.66.1
